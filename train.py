@@ -4,14 +4,14 @@ import os
 import signal
 import torch
 
-import module.opts as opts
-import module.utils.distributed
+import core.opts as opts
+import core.utils.distributed
 
-from module.utils.misc import set_random_seed
-from module.utils.logging import init_logger, logger
-from module.train_single import main as single_main
-from module.utils.parse import ArgumentParser
-from module.inputters.inputter import build_dataset_iter, \
+from core.utils.misc import set_random_seed
+from core.utils.logging import init_logger, logger
+from core.train_single import main as single_main
+from core.utils.parse import ArgumentParser
+from core.inputters.inputter import build_dataset_iter, \
     load_old_vocab, old_style_vocab, build_dataset_iter_multiple
 
 from itertools import cycle

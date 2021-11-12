@@ -3,12 +3,12 @@
 
 from __future__ import unicode_literals
 
-from module.utils.logging import init_logger
-from module.utils.misc import split_corpus
-from module.translate.translator import build_translator
+from core.utils.logging import init_logger
+from core.utils.misc import split_corpus
+from core.translate.translator import build_translator
 
-import module.opts as opts
-from module.utils.parse import ArgumentParser
+import core.opts as opts
+from core.utils.parse import ArgumentParser
 
 
 def translate(opt):

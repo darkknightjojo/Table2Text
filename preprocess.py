@@ -9,12 +9,12 @@ import gc
 import torch
 from collections import Counter, defaultdict
 
-from module.utils.logging import init_logger, logger
-from module.utils.misc import split_corpus
-import module.inputters as inputters
-import module.opts as opts
-from module.utils.parse import ArgumentParser
-from module.inputters.inputter import _build_fields_vocab,\
+from core.utils.logging import init_logger, logger
+from core.utils.misc import split_corpus
+import core.inputters as inputters
+import core.opts as opts
+from core.utils.parse import ArgumentParser
+from core.inputters.inputter import _build_fields_vocab,\
                                     _load_vocab
 
 from functools import partial

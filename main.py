@@ -2,7 +2,7 @@
 
 # Press Shift+F10 to execute it or replace it with your code.
 # Press Double Shift to search everywhere for classes, files, tool windows, actions, and settings.
-from module.utils.parse import ArgumentParser
+from core.utils.parse import ArgumentParser
 from preprocess import main as preprocess
 from translate import main as translate
 from train import main as train
