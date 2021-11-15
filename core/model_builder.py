@@ -123,7 +123,7 @@ def build_base_model(model_opt, fields, gpu, checkpoint=None, gpu_id=None):
     Args:
         model_opt: the option loaded from checkpoint. It's important that
             the opts have been updated and validated. See
-            :class:`module.utils.parse.ArgumentParser`.
+            :class:`core.utils.parse.ArgumentParser`.
         fields (dict[str, torchtext.data.Field]):
             `Field` objects for the model.
         gpu (bool): whether to use gpu.
@@ -164,7 +164,10 @@ def build_base_model(model_opt, fields, gpu, checkpoint=None, gpu_id=None):
     elif not gpu:
         device = torch.device("cpu")
 
-    model = SwitchModel(model_opt, src_emb, dims)
+    tgt_field = fields["tgt"]
+    tgt_emb = build_embeddings(model_opt, tgt_field, for_encoder=False)
+
+    model = SwitchModel(model_opt, src_emb, tgt_emb, dims)
 
     # Build Generator.
     if not model_opt.copy_attn:

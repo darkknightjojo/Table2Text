@@ -369,8 +369,8 @@ class Trainer(object):
             else:
                 trunc_size = target_size
 
-            src, src_lengths = batch.src if isinstance(batch.src, tuple) \
-                else (batch.src, None)
+            src, src_lengths = batch.src if isinstance(batch.src, tuple) else (batch.src, None)
+
             if src_lengths is not None:
                 report_stats.n_src_words += src_lengths.sum().item()
 
@@ -393,8 +393,7 @@ class Trainer(object):
                 else:
                     kwargs = dict()
                     
-                outputs, attns = self.model(src, tgt, src_lengths, bptt=bptt,
-                                            with_align=self.with_align, **kwargs)
+                outputs, attns = self.model(src, tgt, src_lengths, bptt=bptt, with_align=self.with_align, **kwargs)
                 bptt = True
 
                 # 3. Compute loss.
@@ -437,7 +436,7 @@ class Trainer(object):
                 if self.model.decoder.state is not None:
                     self.model.decoder.detach_state()
 
-                self.model(src, tgt, src_lengths, bptt=bptt, reverse=True, with_align=self.with_align, **kwargs)
+                self.model(tgt, src, bptt=bptt, reverse=True, with_align=self.with_align, **kwargs)
 
         # in case of multi step gradient accumulation,
         # update only after accum batches

@@ -3,6 +3,7 @@ from __future__ import print_function
 import time
 from datetime import datetime
 
+import core
 from core.utils.logging import logger
 
 
@@ -68,10 +69,10 @@ class ReportMgrBase(object):
         if step % self.report_every == 0:
             if multigpu:
                 report_stats = \
-                    module.utils.Statistics.all_gather_stats(report_stats)
+                    core.utils.Statistics.all_gather_stats(report_stats)
             self._report_training(
                 step, num_steps, learning_rate, report_stats)
-            return module.utils.Statistics()
+            return core.utils.Statistics()
         else:
             return report_stats
 
@@ -126,7 +127,7 @@ class ReportMgr(ReportMgrBase):
                                    "progress",
                                    learning_rate,
                                    step)
-        report_stats = module.utils.Statistics()
+        report_stats = core.utils.Statistics()
 
         return report_stats
 

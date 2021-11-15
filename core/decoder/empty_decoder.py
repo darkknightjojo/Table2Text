@@ -2,6 +2,7 @@ import torch
 from torch import nn
 from ..modules import GlobalAttention
 
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 class EmptyDecoder(nn.Module):
 
@@ -63,72 +64,7 @@ class EmptyDecoder(nn.Module):
         if self._reuse_copy_attn and not self.attentional:
             raise ValueError("Cannot reuse copy attention with no attention.")
 
-    def forward(self, dec_in, memory_bank, memory_lengths, rnn, **dec_kwargs):
-        weights = dec_kwargs.pop('weights', None)
-        assert weights is not None
-
-        input_feed = self.state["input_feed"].squeeze(0)
-        input_feed_batch, _ = input_feed.size()
-
-        dec_outs = []
-        attns = {}
-
-        if self.attn is not None:
-            attns["std"] = []
-        if self.copy_attn is not None or self._reuse_copy_attn:
-            attns["copy"] = []
-        if self._coverage:
-            attns["coverage"] = []
-
-        emb = self.embeddings(dec_in)
-        assert emb.dim() == 3  # len * batch * embedding_dim
-
-        dec_states = self._unlink_states(self.state['hidden'])
-
-        # Input feed concatenates hidden state with input at every time step.
-        for idx, emb_t in enumerate(emb.split(1)):
-            decoder_input = torch.cat([emb_t.squeeze(0), input_feed], 1)
-            new_states = list()
-            rnn_output, dec_states = rnn(decoder_input, dec_states)
-
-        if self.attentional:
-            decoder_output, p_attn = self.attn(
-                rnn_output,
-                memory_bank.transpose(0, 1),
-                memory_lengths=memory_lengths
-            )
-        else:
-            decoder_output = rnn_output;
-
-        decoder_output = self.dropout(decoder_output)
-        input_feed = decoder_output
-
-        dec_outs += [decoder_output]
-
-        if self.copy_attn is not None:
-            _, copy_attn = self.copy_attn(decoder_output, memory_bank.transpose(0, 1))
-            attns["copy"] += [copy_attn]
-        elif self._reuse_copy_attn:
-            attns["copy"] = attns["std"]
-
-        return self._link_states(dec_states), dec_outs, attns
-
-    def _link_states(self, dec_states):
-        if isinstance(dec_states[0], tuple):
-            left = torch.cat([left for left, right in dec_states], dim=-1)
-            right = torch.cat([right for left, right in dec_states], dim=-1)
-            return left, right
-        return torch.cat(dec_states, dim=-1)
-
-    def _unlink_states(self, dec_states):
-        if isinstance(dec_states, tuple):
-            dec_states = [state.chunk(len(self.rnns), dim=-1)
-                          for state in dec_states]
-            return list(zip(*dec_states))
-        else:
-            return dec_states.chunk(len(self.rnns), dim=-1)
-
-    def init_state(self, src, memory_bank, encoder_final):
+    def init_state(self, encoder_final):
         """Initialize decoder state with last state of the encoder."""
 
         def _fix_enc_hidden(hidden):
@@ -148,6 +84,80 @@ class EmptyDecoder(nn.Module):
         # Init the input feed.
         batch_size = self.state["hidden"][0].size(1)
         h_size = (batch_size, self.hidden_size)
-        self.state["input_feed"] = \
-            self.state["hidden"][0].data.new(*h_size).zero_().unsqueeze(0)
+        self.state["input_feed"] = self.state["hidden"][0].data.new(*h_size).zero_().unsqueeze(0)
         self.state["coverage"] = None
+
+
+    def forward(self, dec_in, memory_bank, memory_lengths, rnn, **dec_kwargs):
+        weights = dec_kwargs.pop('weights', None)
+        assert weights is not None
+
+        input_feed = self.state["input_feed"].squeeze(0)
+        input_feed_batch, _ = input_feed.size()
+
+        dec_outs = []
+        attns = {}
+
+        if self.attn is not None:
+            attns["std"] = []
+        if self.copy_attn is not None or self._reuse_copy_attn:
+            attns["copy"] = []
+        if self._coverage:
+            attns["coverage"] = []
+
+
+        # emb = self.embeddings(dec_in)
+        # assert emb.dim() == 3  # len * batch * embedding_dim
+
+        dec_states = self.state['hidden']
+        rnn_output_list, dec_states_list = rnn(dec_in, hidden=dec_states, is_decoder=True, input_feed=input_feed)
+
+        # Input feed concatenates hidden state with input at every time step.
+        # for idx, emb_t in enumerate(emb.split(1)):
+        #     decoder_input = torch.cat([emb_t.squeeze(0), input_feed], 1)
+        #     new_states = list()
+        #     rnn_output, dec_states = rnn(decoder_input, dec_states)
+
+        for rnn_output, dec_states in zip(rnn_output_list, dec_states_list):
+            if self.attentional:
+                decoder_output, p_attn = self.attn(
+                    rnn_output.transpose(0, 1),
+                    memory_bank.transpose(0, 1),
+                    memory_lengths=memory_lengths
+                )
+                attns["std"].append(p_attn)
+            else:
+                decoder_output = rnn_output
+
+            decoder_output = self.dropout(decoder_output)
+            input_feed = decoder_output
+            dec_outs += [decoder_output]
+
+            if self.copy_attn is not None:
+                _, copy_attn = self.copy_attn(decoder_output, memory_bank.transpose(0, 1))
+                attns["copy"] += [copy_attn]
+            elif self._reuse_copy_attn:
+                attns["copy"] = attns["std"]
+
+        # Update the state with the result.
+        if not isinstance(dec_states, tuple):
+            dec_states = (dec_states,)
+        self.state["hidden"] = dec_states
+        self.state["input_feed"] = dec_outs[-1].unsqueeze(0)
+        self.state["coverage"] = None
+        if "coverage" in attns:
+            self.state["coverage"] = attns["coverage"][-1].unsqueeze(0)
+        if type(dec_outs) == list:
+            dec_outs = torch.stack(dec_outs)
+
+            for k in attns:
+                if type(attns[k]) == list:
+                    attns[k] = torch.stack(attns[k])
+                    attns[k] = attns[k].squeeze(dim=1)
+        dec_outs = dec_outs.squeeze(dim=1)
+
+        return dec_states, dec_outs, attns
+
+    def detach_state(self):
+        self.state["hidden"] = tuple(h.detach() for h in self.state["hidden"])
+        self.state["input_feed"] = self.state["input_feed"].detach()

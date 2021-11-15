@@ -1,6 +1,8 @@
+import torch
 import torch.nn as nn
 from torch.nn.utils.rnn import pack_padded_sequence as pack
 from torch.nn.utils.rnn import pad_packed_sequence as unpack
+import torch.nn.functional as F
 
 class LSTM(nn.Module):
 
@@ -36,29 +38,38 @@ class LSTM(nn.Module):
             embeddings,
             opt.bridge)
 
-    def forward(self, input, lengths=None):
+    def forward(self, input, lengths=None, hidden=None, is_decoder=False, input_feed=None):
 
         # s_len, batch, emb_dim = emb.size()
         emb = self.embeddings(input)
 
-        packed_emb = emb
+        if not is_decoder:
+            packed_emb = emb
+            # 压缩 去除无效0
+            if lengths is not None:
+                lengths_list = lengths.view(-1).tolist()
+                packed_emb = pack(emb, lengths_list)
 
-        # 压缩 去除无效0
-        if lengths is not None:
-            lengths_list = lengths.view(-1).tolist()
-            packed_emb = pack(emb, lengths_list)
+            # TODO memory_bank 是什么？
+            memory_bank, encoder_final = self.rnn(packed_emb, hidden)
+            # 填充0 保证长度一致
+            if lengths is not None:
+                memory_bank = unpack(memory_bank)[0]
+            #  switch rnn 不需要使用bridge
+            if self.use_bridge:
+                encoder_final = self._bridge(encoder_final)
+            return encoder_final, memory_bank, lengths
 
-        # TODO memory_bank 是什么？
-        memory_bank, encoder_final = self.rnn(packed_emb)
+        else:
+            rnn_output = []
+            dec_state = []
+            for idx, emb_t in enumerate(emb.split(1)):
+                # decoder_input = torch.cat([emb_t.squeeze(0), input_feed], 1)
+                output, state = self.rnn(emb_t, hidden)
+                rnn_output.append(output)
+                dec_state.append(state)
+            return rnn_output, dec_state
 
-        # 填充0 保证长度一致
-        if lengths is not None:
-            memory_bank = unpack(memory_bank)[0]
-
-        #  switch rnn 不需要使用bridge
-        if self.use_bridge:
-            encoder_final = self._bridge(encoder_final)
-        return encoder_final, memory_bank, lengths
 
     def _initialize_bridge(self, rnn_type,
                            hidden_size,
