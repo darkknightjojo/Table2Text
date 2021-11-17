@@ -11,6 +11,7 @@ import torch
 
 import core.model_builder
 import core.inputters as inputters
+from core import translate
 from core.translate.beam_search import BeamSearch
 from core.translate.greedy_search import GreedySearch
 from core.utils.misc import tile, set_random_seed, report_matrix
@@ -22,10 +23,10 @@ def build_translator(opt, report_score=True, logger=None, out_file=None):
     if out_file is None:
         out_file = codecs.open(opt.output, 'w+', 'utf-8')
 
-    load_test_model = module.model_builder.load_test_model
+    load_test_model = core.model_builder.load_test_model
     fields, model, model_opt = load_test_model(opt)
 
-    scorer = translate.GNMTGlobalScorer.from_opt(opt)
+    scorer = core.translate.GNMTGlobalScorer.from_opt(opt)
 
     translator = Translator.from_opt(
         model,
@@ -291,6 +292,7 @@ class Translator(object):
             gs = self._score_target(
                 batch, memory_bank, src_lengths, src_vocabs,
                 batch.src_map if use_src_map else None)
+            # self.model.decoder.init_state(src, memory_bank, enc_states)
             self.model.decoder.init_state(src, memory_bank, enc_states)
         else:
             gs = [0] * batch_size
@@ -568,7 +570,7 @@ class Translator(object):
         src, src_lengths = batch.src if isinstance(batch.src, tuple) \
                            else (batch.src, None)
 
-        enc_states, memory_bank, src_lengths = self.model.encoder(
+        enc_states, memory_bank, src_lengths = self.model.rnn1(
             src, src_lengths)
         if src_lengths is None:
             assert not isinstance(memory_bank, tuple), \
@@ -607,8 +609,8 @@ class Translator(object):
         else:
             kwargs = dict()
         
-        dec_out, dec_attn = self.model.decoder(
-            decoder_in, memory_bank, memory_lengths=memory_lengths, step=step,
+        _, dec_out, dec_attn = self.model.decoder(
+            decoder_in, memory_bank, memory_lengths=memory_lengths, rnn=self.model.rnn2,
             **kwargs
         )
 
@@ -670,6 +672,7 @@ class Translator(object):
         # (1) Run the encoder on the src.
         src, enc_states, memory_bank, src_lengths = self._run_encoder(batch)
         self.model.decoder.init_state(src, memory_bank, enc_states)
+        # self.model.decoder.init_state(enc_states)
 
         results = {
             "predictions": None,
@@ -725,7 +728,7 @@ class Translator(object):
 
             if parallel_paths > 1 or any_finished:
                 self.model.decoder.map_state(
-                    lambda state, dim: state.index_select(dim, select_indices))
+                    lambda state, dim: state.index_select(dim, select_indices), select_indices)
 
         results["scores"] = decode_strategy.scores
         results["predictions"] = decode_strategy.predictions

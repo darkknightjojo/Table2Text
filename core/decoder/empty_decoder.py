@@ -11,7 +11,6 @@ class EmptyDecoder(nn.Module):
         """Alternate constructor."""
         return cls(
             hidden_size=opt.rnn_size,
-            num_layers=opt.dec_layers,
             bidirectional_encoder=opt.brnn,
             attn_type=opt.global_attention,
             attn_func=opt.global_attention_function,
@@ -23,19 +22,20 @@ class EmptyDecoder(nn.Module):
             reuse_copy_attn=opt.reuse_copy_attn,
             copy_attn_type=opt.copy_attn_type)
 
-    def __init__(self, hidden_size, num_layers,
-                 bidirectional_encoder, embeddings=None,
-                 attn_type="general", attn_func="softmax",
-                 coverage_attn=False, copy_attn=False,
-                 reuse_copy_attn=False, copy_attn_type="general",
+    def __init__(self, hidden_size, embeddings=None, bidirectional_encoder=None,  attn_type="general", attn_func="softmax",
+                 coverage_attn=False, copy_attn=False, reuse_copy_attn=False, copy_attn_type="general",
                  dropout=0.0, attentional=True):
 
         super(EmptyDecoder, self).__init__()
-        self.attentional = attentional
         self.hidden_size = hidden_size
         self.embeddings = embeddings
+
         self.dropout = nn.Dropout(dropout)
+
         self.bidirectional_encoder = bidirectional_encoder
+
+        self.attentional = attentional
+
         # Decoder state
         self.state = {}
         # Set up the standard attention.
@@ -64,8 +64,9 @@ class EmptyDecoder(nn.Module):
         if self._reuse_copy_attn and not self.attentional:
             raise ValueError("Cannot reuse copy attention with no attention.")
 
-    def init_state(self, encoder_final):
+    def init_state(self, src=None, memory_bank=None, encoder_final=None):
         """Initialize decoder state with last state of the encoder."""
+        assert encoder_final is not None
 
         def _fix_enc_hidden(hidden):
             # The encoder hidden is  (layers*directions) x batch x dim.
@@ -76,22 +77,22 @@ class EmptyDecoder(nn.Module):
             return hidden
 
         if isinstance(encoder_final, tuple):  # LSTM
-            self.state["hidden"] = tuple(_fix_enc_hidden(enc_hid)
-                                         for enc_hid in encoder_final)
+            # self.state["hidden"] = tuple(_fix_enc_hidden(enc_hid) for enc_hid in encoder_final)
+            self.state["hidden"] = tuple(enc_hid for enc_hid in encoder_final)
         else:  # GRU
-            self.state["hidden"] = (_fix_enc_hidden(encoder_final),)
-
+            # self.state["hidden"] = (_fix_enc_hidden(encoder_final),)
+            self.state["hidden"] = (encoder_final,)
         # Init the input feed.
         batch_size = self.state["hidden"][0].size(1)
         h_size = (batch_size, self.hidden_size)
+        # decoder第一个输入向量的初始化
         self.state["input_feed"] = self.state["hidden"][0].data.new(*h_size).zero_().unsqueeze(0)
         self.state["coverage"] = None
 
 
-    def forward(self, dec_in, memory_bank, memory_lengths, rnn, **dec_kwargs):
-        weights = dec_kwargs.pop('weights', None)
-        assert weights is not None
+    def forward(self, target, memory_bank, memory_lengths, rnn, **dec_kwargs):
 
+        # input_feed.shape: batch_size * hidden_size
         input_feed = self.state["input_feed"].squeeze(0)
         input_feed_batch, _ = input_feed.size()
 
@@ -106,11 +107,11 @@ class EmptyDecoder(nn.Module):
             attns["coverage"] = []
 
 
-        # emb = self.embeddings(dec_in)
+        # emb = self.embeddings(target)
         # assert emb.dim() == 3  # len * batch * embedding_dim
 
         dec_states = self.state['hidden']
-        rnn_output_list, dec_states_list = rnn(dec_in, hidden=dec_states, is_decoder=True, input_feed=input_feed)
+        rnn_output_list, dec_states_list = rnn(target, hidden=dec_states, is_decoder=True, input_feed=input_feed)
 
         # Input feed concatenates hidden state with input at every time step.
         # for idx, emb_t in enumerate(emb.split(1)):
@@ -143,10 +144,10 @@ class EmptyDecoder(nn.Module):
         if not isinstance(dec_states, tuple):
             dec_states = (dec_states,)
         self.state["hidden"] = dec_states
-        self.state["input_feed"] = dec_outs[-1].unsqueeze(0)
+        self.state["input_feed"] = dec_outs[-1]
         self.state["coverage"] = None
         if "coverage" in attns:
-            self.state["coverage"] = attns["coverage"][-1].unsqueeze(0)
+            self.state["coverage"] = attns["coverage"][-1].squeeze(0)
         if type(dec_outs) == list:
             dec_outs = torch.stack(dec_outs)
 
@@ -161,3 +162,9 @@ class EmptyDecoder(nn.Module):
     def detach_state(self):
         self.state["hidden"] = tuple(h.detach() for h in self.state["hidden"])
         self.state["input_feed"] = self.state["input_feed"].detach()
+
+    def map_state(self, fn, select_indices=None):
+        self.state["hidden"] = tuple(fn(h, 1) for h in self.state["hidden"])
+        self.state["input_feed"] = fn(self.state["input_feed"], 1)
+        if self._coverage and self.state["coverage"] is not None:
+            self.state["coverage"] = fn(self.state["coverage"], 1)

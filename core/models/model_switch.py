@@ -43,33 +43,29 @@ class SwitchModel(nn.Module):
             * decoder output ``(tgt_len, batch, hidden)``
             * dictionary attention dists of ``(tgt_len, batch, src_len)``
         """
-        dec_in = tgt[:-1]  # exclude last target from inputs
+        target = tgt[:-1]  # exclude last target from inputs
 
         # 交换RNN
         if reverse:
             rnn_encoder = self.rnn2
             rnn_decoder = self.rnn1
-            # TODO 不确定这里的参数是否应该进行交换
-            # separate additionnal args for encoder/decoder
-            # enc_kwargs = {key[4:]: value for key, value in kwargs.items() if key.startswith('dec')}
-            # dec_kwargs = {key[4:]: value for key, value in kwargs.items() if key.startswith('enc')}
         else:
             rnn_encoder = self.rnn1
             rnn_decoder = self.rnn2
         # separate additionnal args for encoder/decoder
-        enc_kwargs = {key[4:]: value for key, value in kwargs.items() if key.startswith('enc')}
-        dec_kwargs = {key[4:]: value for key, value in kwargs.items() if key.startswith('dec')}
+        # enc_kwargs = {key[4:]: value for key, value in kwargs.items() if key.startswith('enc')}
+        # dec_kwargs = {key[4:]: value for key, value in kwargs.items() if key.startswith('dec')}
 
         # # separate additionnal args for encoder/decoder
         # enc_kwargs = {key[4:]: value for key, value in kwargs.items() if key.startswith('enc')}
         # dec_kwargs = {key[4:]: value for key, value in kwargs.items() if key.startswith('dec')}
 
-        enc_state, memory_bank, lengths = encoder_forward(src, lengths, rnn_encoder, **enc_kwargs)
+        enc_state, memory_bank, lengths = encoder_forward(src, lengths, rnn_encoder)
 
         decoder_init(self.decoder, enc_state)
 
-        dec_states, dec_out, attns = decoder_forward(self.decoder, dec_in, memory_bank, lengths=lengths,
-                                         rnn=rnn_decoder, **dec_kwargs)
+        dec_states, dec_out, attns = decoder_forward(self.decoder, target, memory_bank, lengths=lengths,
+                                         rnn=rnn_decoder)
         return dec_out, attns
 
     def update_dropout(self, dropout):
@@ -82,8 +78,8 @@ def encoder_forward(src, lengths, rnn, **enc_kwargs):
 
 
 def decoder_init(decoder, enc_state):
-    decoder.init_state(enc_state)
+    decoder.init_state(encoder_final=enc_state)
 
 
-def decoder_forward(decoder, dec_in, memory_bank, lengths, rnn, **dec_kwargs):
-    return decoder(dec_in, memory_bank, memory_lengths=lengths, rnn=rnn, **dec_kwargs)
+def decoder_forward(decoder, target, memory_bank, lengths, rnn, **dec_kwargs):
+    return decoder(target, memory_bank, memory_lengths=lengths, rnn=rnn, **dec_kwargs)

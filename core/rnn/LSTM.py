@@ -3,6 +3,7 @@ import torch.nn as nn
 from torch.nn.utils.rnn import pack_padded_sequence as pack
 from torch.nn.utils.rnn import pad_packed_sequence as unpack
 import torch.nn.functional as F
+from torch.nn.functional import pad
 
 class LSTM(nn.Module):
 
@@ -11,13 +12,13 @@ class LSTM(nn.Module):
         super(LSTM, self).__init__()
         assert embeddings is not None
 
-        num_directions = 2 if bidirectional else 1
-        assert hidden_size % num_directions == 0
-        hidden_size = hidden_size // num_directions
+        self.num_directions = 2 if bidirectional else 1
+        assert hidden_size % self.num_directions == 0
+        self.hidden_size = hidden_size // self.num_directions
         self.embeddings = embeddings
 
-        self.rnn = nn.LSTM(input_size=embeddings.embedding_size,
-                           hidden_size=hidden_size,
+        self.rnn = nn.LSTM(input_size=embeddings.embedding_size + hidden_size,
+                           hidden_size=self.hidden_size,
                            num_layers=num_layers,
                            dropout=dropout,
                            bidirectional=bidirectional)
@@ -45,13 +46,15 @@ class LSTM(nn.Module):
 
         if not is_decoder:
             packed_emb = emb
+            # 填充为 len* batch_size * hidden_size+embedding
+            packed_emb = pad(packed_emb, (self.hidden_size * self.num_directions, 0))
             # 压缩 去除无效0
             if lengths is not None:
                 lengths_list = lengths.view(-1).tolist()
-                packed_emb = pack(emb, lengths_list)
+                packed_emb = pack(packed_emb, lengths_list)
 
             # TODO memory_bank 是什么？
-            memory_bank, encoder_final = self.rnn(packed_emb, hidden)
+            memory_bank, encoder_final = self.rnn(packed_emb)
             # 填充0 保证长度一致
             if lengths is not None:
                 memory_bank = unpack(memory_bank)[0]
@@ -64,8 +67,8 @@ class LSTM(nn.Module):
             rnn_output = []
             dec_state = []
             for idx, emb_t in enumerate(emb.split(1)):
-                # decoder_input = torch.cat([emb_t.squeeze(0), input_feed], 1)
-                output, state = self.rnn(emb_t, hidden)
+                decoder_input = torch.cat([emb_t, torch.unsqueeze(input_feed, 0)], 2)
+                output, state = self.rnn(decoder_input, hidden)
                 rnn_output.append(output)
                 dec_state.append(state)
             return rnn_output, dec_state
