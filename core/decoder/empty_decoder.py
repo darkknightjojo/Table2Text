@@ -4,10 +4,11 @@ from ..modules import GlobalAttention
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
+
 class EmptyDecoder(nn.Module):
 
     @classmethod
-    def from_opt(cls, opt, embeddings):
+    def from_opt(cls, opt, src_embeddings, embeddings):
         """Alternate constructor."""
         return cls(
             hidden_size=opt.rnn_size,
@@ -20,16 +21,18 @@ class EmptyDecoder(nn.Module):
             else opt.dropout,
             embeddings=embeddings,
             reuse_copy_attn=opt.reuse_copy_attn,
-            copy_attn_type=opt.copy_attn_type)
+            copy_attn_type=opt.copy_attn_type,
+            src_embeddings=src_embeddings)
 
-    def __init__(self, hidden_size, embeddings=None, bidirectional_encoder=None,  attn_type="general", attn_func="softmax",
+    def __init__(self, hidden_size, embeddings=None, src_embeddings=None, bidirectional_encoder=None, attn_type="general",
+                 attn_func="softmax",
                  coverage_attn=False, copy_attn=False, reuse_copy_attn=False, copy_attn_type="general",
                  dropout=0.0, attentional=True):
 
         super(EmptyDecoder, self).__init__()
         self.hidden_size = hidden_size
         self.embeddings = embeddings
-
+        self.src_embeddings = src_embeddings
         self.dropout = nn.Dropout(dropout)
 
         self.bidirectional_encoder = bidirectional_encoder
@@ -89,12 +92,10 @@ class EmptyDecoder(nn.Module):
         self.state["input_feed"] = self.state["hidden"][0].data.new(*h_size).zero_().unsqueeze(0)
         self.state["coverage"] = None
 
-
-    def forward(self, target, memory_bank, memory_lengths, rnn, **dec_kwargs):
+    def forward(self, target, memory_bank, memory_lengths, rnn, reverse=False, **dec_kwargs):
 
         # input_feed.shape: batch_size * hidden_size
-        input_feed = self.state["input_feed"].squeeze(0)
-        input_feed_batch, _ = input_feed.size()
+        input_feed = self.state["input_feed"]
 
         dec_outs = []
         attns = {}
@@ -106,20 +107,21 @@ class EmptyDecoder(nn.Module):
         if self._coverage:
             attns["coverage"] = []
 
+        if self.src_embeddings is not None and reverse:
+            tgt_emb = self.src_embeddings(target)
+        else:
+            tgt_emb = self.embeddings(target)
 
-        # emb = self.embeddings(target)
-        # assert emb.dim() == 3  # len * batch * embedding_dim
+        assert tgt_emb.dim() == 3  # len * batch * embedding_dim
 
         dec_states = self.state['hidden']
-        rnn_output_list, dec_states_list = rnn(target, hidden=dec_states, is_decoder=True, input_feed=input_feed)
 
+        # rnn_output_list, dec_states_list = rnn(target, hidden=dec_states, is_decoder=True, input_feed=input_feed)
         # Input feed concatenates hidden state with input at every time step.
-        # for idx, emb_t in enumerate(emb.split(1)):
-        #     decoder_input = torch.cat([emb_t.squeeze(0), input_feed], 1)
-        #     new_states = list()
-        #     rnn_output, dec_states = rnn(decoder_input, dec_states)
+        for idx, emb_t in enumerate(tgt_emb.split(1)):
+            decoder_input = torch.cat([emb_t, input_feed], 2)
+            rnn_output, dec_states = rnn(input=decoder_input, hidden=dec_states, is_decoder=True)
 
-        for rnn_output, dec_states in zip(rnn_output_list, dec_states_list):
             if self.attentional:
                 decoder_output, p_attn = self.attn(
                     rnn_output.transpose(0, 1),
@@ -139,6 +141,7 @@ class EmptyDecoder(nn.Module):
                 attns["copy"] += [copy_attn]
             elif self._reuse_copy_attn:
                 attns["copy"] = attns["std"]
+
 
         # Update the state with the result.
         if not isinstance(dec_states, tuple):

@@ -17,7 +17,7 @@ import traceback
 from core.metrics import RLLossCompute
 from core.utils.misc import get_model_device
 from core.utils.logging import logger
-
+from core.models.model_switch import SwitchModel
 import core.utils
 
 
@@ -436,7 +436,8 @@ class Trainer(object):
                 if self.model.decoder.state is not None:
                     self.model.decoder.detach_state()
 
-                self.model(tgt, src, bptt=bptt, reverse=True, with_align=self.with_align, **kwargs)
+                # if isinstance(self.model, SwitchModel):
+                #     self.model(tgt, src, lengths=src_lengths, bptt=bptt, reverse=True, with_align=self.with_align, **kwargs)
 
         # in case of multi step gradient accumulation,
         # update only after accum batches

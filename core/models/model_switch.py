@@ -18,7 +18,7 @@ class SwitchModel(nn.Module):
         self.rnn1 = LSTM.from_opt(opt, src_embeddings)
         self.rnn2 = LSTM.from_opt(opt, tgt_embeddings)
         # self.encoder = self.rnn1
-        self.decoder = EmptyDecoder.from_opt(opt, tgt_embeddings)
+        self.decoder = EmptyDecoder.from_opt(opt, src_embeddings, tgt_embeddings)
 
     def forward(self, src, tgt, lengths=None, bptt=False, with_align=False, reverse=False, **kwargs):
         """Forward propagate a `src` and `tgt` pair for training.
@@ -60,12 +60,12 @@ class SwitchModel(nn.Module):
         # enc_kwargs = {key[4:]: value for key, value in kwargs.items() if key.startswith('enc')}
         # dec_kwargs = {key[4:]: value for key, value in kwargs.items() if key.startswith('dec')}
 
-        enc_state, memory_bank, lengths = encoder_forward(src, lengths, rnn_encoder)
+        enc_state, memory_bank, lengths = encoder_forward(src, lengths=None, rnn=rnn_encoder)
 
         decoder_init(self.decoder, enc_state)
 
-        dec_states, dec_out, attns = decoder_forward(self.decoder, target, memory_bank, lengths=lengths,
-                                         rnn=rnn_decoder)
+        dec_states, dec_out, attns = decoder_forward(self.decoder, target, memory_bank,
+                                                     lengths=lengths, rnn=rnn_decoder, reverse=reverse)
         return dec_out, attns
 
     def update_dropout(self, dropout):
@@ -81,5 +81,5 @@ def decoder_init(decoder, enc_state):
     decoder.init_state(encoder_final=enc_state)
 
 
-def decoder_forward(decoder, target, memory_bank, lengths, rnn, **dec_kwargs):
-    return decoder(target, memory_bank, memory_lengths=lengths, rnn=rnn, **dec_kwargs)
+def decoder_forward(decoder, target, memory_bank, lengths, rnn, reverse, **dec_kwargs):
+    return decoder(target, memory_bank, memory_lengths=lengths, rnn=rnn, reverse=reverse, **dec_kwargs)

@@ -39,12 +39,11 @@ class LSTM(nn.Module):
             embeddings,
             opt.bridge)
 
-    def forward(self, input, lengths=None, hidden=None, is_decoder=False, input_feed=None):
+    def forward(self, input, lengths=None, hidden=None, is_decoder=False):
 
         # s_len, batch, emb_dim = emb.size()
-        emb = self.embeddings(input)
-
         if not is_decoder:
+            emb = self.embeddings(input)
             packed_emb = emb
             # 填充为 len* batch_size * hidden_size+embedding
             packed_emb = pad(packed_emb, (self.hidden_size * self.num_directions, 0))
@@ -64,14 +63,9 @@ class LSTM(nn.Module):
             return encoder_final, memory_bank, lengths
 
         else:
-            rnn_output = []
-            dec_state = []
-            for idx, emb_t in enumerate(emb.split(1)):
-                decoder_input = torch.cat([emb_t, torch.unsqueeze(input_feed, 0)], 2)
-                output, state = self.rnn(decoder_input, hidden)
-                rnn_output.append(output)
-                dec_state.append(state)
-            return rnn_output, dec_state
+            # decoder直接传进来embedding
+            output, state = self.rnn(input, hidden)
+            return output, state
 
 
     def _initialize_bridge(self, rnn_type,
