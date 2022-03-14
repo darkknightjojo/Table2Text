@@ -140,5 +140,7 @@ dmypy.json
 cython_debug/
 
 data/
-
-experiments
+.idea/
+experiments/
+core/pretrain/model/
+core/pretrain/out

@@ -3,6 +3,7 @@ import torch.nn as nn
 from core.rnn.LSTM import LSTM
 from core.decoder.empty_decoder import EmptyDecoder
 
+
 class SwitchModel(nn.Module):
     """
     Core trainable object in OpenNMT. Implements a trainable interface

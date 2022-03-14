@@ -4,7 +4,7 @@
 # Press Double Shift to search everywhere for classes, files, tool windows, actions, and settings.
 from core.utils.parse import ArgumentParser
 from preprocess import main as preprocess
-from translate import main as translate
+from script.translate import main as translate
 from train import main as train
 
 if __name__ == '__main__':

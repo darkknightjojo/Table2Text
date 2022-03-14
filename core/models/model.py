@@ -46,10 +46,12 @@ class T2TModel(nn.Module):
         enc_kwargs = {key[4:]: value for key, value in kwargs.items() if key.startswith('enc')}
         dec_kwargs = {key[4:]: value for key, value in kwargs.items() if key.startswith('dec')}
 
+        # enc_state = feature_size * batch_size * hidden_size
+        # memory_bank = src_length * batch_size * hidden_size
         enc_state, memory_bank, lengths = self.encoder(src, lengths, **enc_kwargs)
 
         if bptt is False:
-            self.decoder.init_state(src, memory_bank, enc_state)
+            self.decoder.init_state(src, memory_bank, enc_state, **dec_kwargs)
         dec_out, attns = self.decoder(dec_in, memory_bank,
                                       memory_lengths=lengths,
                                       with_align=with_align,

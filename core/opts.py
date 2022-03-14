@@ -112,7 +112,9 @@ def model_opts(parser):
     group.add('--branch_dropout', '-branch_dropout', type=float, default=.0,
               help='Probability of using random branch weights for decoding.')
     group.add('--weights_file', '-weights_file', type=str, default='',
-              help='Path to the weights used to merge branches in multi branch decodeur')
+              help='Path to the weights used to merge branches in multi branch decoder')
+    group.add('--tabbie_embeddings', '-tabbie_embeddings', type=str, default='',
+              help='Path to the embeddings used in pretrain_base_decoder')
 
     group.add('--input_feed', '-input_feed', type=int, default=1,
               help="Feed the context vector at each time step as "

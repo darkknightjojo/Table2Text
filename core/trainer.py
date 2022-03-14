@@ -61,24 +61,24 @@ def build_trainer(opt, device_id, model, fields, optim, model_saver=None):
     earlystopper = core.utils.EarlyStopping(
         opt.early_stopping, scorers=core.utils.scorers_from_opts(opt)) \
         if opt.early_stopping > 0 else None
-    
-    weights_file = opt.weights_file if opt.weights_file else None
+
+    tabbie_embeddings = opt.tabbie_embeddings if opt.tabbie_embeddings else None
 
     report_manager = core.utils.build_report_manager(opt, gpu_rank)
     return Trainer(model, train_loss, valid_loss, optim, trunc_size,
-                        shard_size, norm_method,
-                        accum_count, accum_steps,
-                        n_gpu, gpu_rank,
-                        gpu_verbose_level, report_manager,
-                        with_align=True if opt.lambda_align > 0 else False,
-                        model_saver=model_saver if gpu_rank == 0 else None,
-                        average_decay=average_decay,
-                        average_every=average_every,
-                        model_dtype=opt.model_dtype,
-                        earlystopper=earlystopper,
-                        dropout=dropout,
-                        dropout_steps=dropout_steps,
-                        weights_file=weights_file)
+                   shard_size, norm_method,
+                   accum_count, accum_steps,
+                   n_gpu, gpu_rank,
+                   gpu_verbose_level, report_manager,
+                   with_align=True if opt.lambda_align > 0 else False,
+                   model_saver=model_saver if gpu_rank == 0 else None,
+                   average_decay=average_decay,
+                   average_every=average_every,
+                   model_dtype=opt.model_dtype,
+                   earlystopper=earlystopper,
+                   dropout=dropout,
+                   dropout_steps=dropout_steps,
+                   tabbie_embeddings=tabbie_embeddings)
 
 
 class Trainer(object):
@@ -115,7 +115,7 @@ class Trainer(object):
                  report_manager=None, with_align=False, model_saver=None,
                  average_decay=0, average_every=1, model_dtype='fp32',
                  earlystopper=None, dropout=[0.3], dropout_steps=[0],
-                 weights_file=None):
+                 tabbie_embeddings=None):
         # Basic attributes.
         self.model = model
         self.train_loss = train_loss
@@ -147,18 +147,18 @@ class Trainer(object):
                 assert self.trunc_size == 0, \
                     """To enable accumulated gradients,
                        you must disable target sequence truncating."""
-                
+
         self._dev = get_model_device(self.model)
 
         # Set model in training mode.
         self.model.train()
-        
-        # Load weights in case of multi-branches rnn training
-        if weights_file:
-            self.decoder_rnn_weights = self.load_weights_file(weights_file)
+
+        # Load tabbie_embedding in case of pretrain_base rnn training
+        if tabbie_embeddings:
+            self.table_embeddings = self.load_table_embeddings_file(tabbie_embeddings)
         else:
-            self.decoder_rnn_weights = None
-            
+            self.table_embeddings = None
+
     @staticmethod
     def load_weights_file(path):
         with open(path, mode="r", encoding="utf8") as f:
@@ -166,6 +166,10 @@ class Trainer(object):
                 torch.Tensor([list(map(float, s.split(':'))) for s in line.split()])
                 for line in f
             ]
+
+    @staticmethod
+    def load_table_embeddings_file(path):
+        return torch.load(path)
 
     def _accum_count(self, step):
         for i in range(len(self.accum_steps)):
@@ -207,7 +211,7 @@ class Trainer(object):
             self.moving_average = copy_params
         else:
             average_decay = max(self.average_decay,
-                                1 - (step + 1)/(step + 10))
+                                1 - (step + 1) / (step + 10))
             for (i, avg), cpt in zip(enumerate(self.moving_average),
                                      self.model.parameters()):
                 self.moving_average[i] = \
@@ -298,8 +302,8 @@ class Trainer(object):
                         break
 
             if (self.model_saver is not None
-                and (save_checkpoint_steps != 0
-                     and step % save_checkpoint_steps == 0)):
+                    and (save_checkpoint_steps != 0
+                         and step % save_checkpoint_steps == 0)):
                 self.model_saver.save(step, moving_average=self.moving_average)
 
             if train_steps > 0 and step >= train_steps:
@@ -334,7 +338,7 @@ class Trainer(object):
 
             for batch in valid_iter:
                 src, src_lengths = batch.src if isinstance(batch.src, tuple) \
-                                   else (batch.src, None)
+                    else (batch.src, None)
                 tgt = batch.tgt
 
                 # F-prop through the model.
@@ -377,22 +381,22 @@ class Trainer(object):
             tgt_outer = batch.tgt
 
             bptt = False
-            for j in range(0, target_size-1, trunc_size):
+            for j in range(0, target_size - 1, trunc_size):
                 # 1. Create truncated target.
                 tgt = tgt_outer[j: j + trunc_size]
 
                 # 2. F-prop all but generator.
                 if self.accum_count == 1:
                     self.optim.zero_grad()
-                    
-                if self.decoder_rnn_weights:
-                    kwargs = {'dec_weights': pad_sequence([
-                        torch.Tensor(self.decoder_rnn_weights[batch.indices[b].item()])
-                        for b in range(batch.batch_size)
-                    ], batch_first=False).to(self._dev)}
+
+                if self.table_embeddings:
+                    embeddings = []
+                    for b in range(batch.batch_size):
+                        embeddings.append(self.table_embeddings[batch.indices[b]].to(self._dev))
+                    kwargs = {'enc_table_embeddings': embeddings}
                 else:
                     kwargs = dict()
-                    
+
                 outputs, attns = self.model(src, tgt, src_lengths, bptt=bptt, with_align=self.with_align, **kwargs)
                 bptt = True
 
