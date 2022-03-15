@@ -32,23 +32,22 @@ class TabbieRunner:
         pbar = tqdm(total=total)
         if input_file:
             for batch_json in lazy_groups_of(_get_json_data(input_file), batch_size):
-                for model_input_json, result in zip(batch_json, self._predict_json(batch_json)):
-                    embeddings.append(result)
-                    pbar.update(batch_size)
+                result = self._predict_json(batch_json)
+                embeddings.append(result)
+                pbar.update(batch_size)
         else:
             for batch_json in lazy_groups_of(input_json, batch_size):
-                for model_input_json, result in zip(batch_json, self._predict_json(batch_json)):
-                    embeddings.append(result)
-                    pbar.update(batch_size)
+                result = self._predict_json(batch_json)
+                embeddings.append(result)
+                pbar.update(batch_size)
         return embeddings
 
     def _predict_json(self, batch_data: List[JsonDict]) -> Iterator[str]:
         if len(batch_data) == 1:
-            results = [self.predict_json(batch_data[0])]
+            results = self.predict_json(batch_data[0])
         else:
             results = self.predict_batch_json(batch_data)
-        for output in results:
-            yield output
+        return results
 
     def predict_json(self, inputs: JsonDict) -> JsonDict:
         instance = self._json_to_instance(inputs)

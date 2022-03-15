@@ -158,23 +158,6 @@ class PretrainBaseRNNDecoder(RNNDecoderBase):
 
             rnn_output, dec_state = self.rnn(decoder_input, dec_state)
 
-            # new_states = list()
-            # for jdx, (rnn, dec_state) in enumerate(zip(self.rnns, dec_states)):
-            #     tmp_output, tmp_state = rnn(decoder_input, dec_state)
-            #     new_states.append(tmp_state)
-            #
-            #     # randomize weights with self.branch_dropout probability
-            #     w = weights[idx, :, jdx:jdx + 1]
-            #     if torch.rand(1) < self.branch_dropout:
-            #         w = torch.rand(w.shape).mul(5).softmax(-1).to(weights.device)
-            #
-            #     if jdx == 0:
-            #         rnn_output = w * tmp_output
-            #     else:
-            #         rnn_output += w * tmp_output
-            #
-            # dec_states = new_states
-
             if self.attentional:
                 decoder_output, p_attn = self.attn(
                     rnn_output,
@@ -206,7 +189,7 @@ class PretrainBaseRNNDecoder(RNNDecoderBase):
             elif self._reuse_copy_attn:
                 attns["copy"] = attns["std"]
 
-        return self._link_states(dec_states), dec_outs, attns
+        return dec_state, dec_outs, attns
 
     def _build_rnn(self, rnn_type, input_size,
                    hidden_size, num_layers, dropout):

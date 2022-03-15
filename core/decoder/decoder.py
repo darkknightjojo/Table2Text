@@ -172,7 +172,14 @@ class RNNDecoderBase(DecoderBase):
                                          for enc_hid in encoder_final)
         elif isinstance(encoder_final, list): # tabbie
             batch_size = len(encoder_final)
-            self.state["hidden"] = [torch.stack(encoder_final).reshape((1, batch_size, 768))]
+            row_embeddings = []
+            col_embeddings = []
+            for item in encoder_final:
+                row_embeddings.append(item[0])
+                col_embeddings.append(item[1])
+            hidden0 = torch.stack(row_embeddings).reshape((1, batch_size, 768))
+            hidden1 = torch.stack(col_embeddings).reshape((1, batch_size, 768))
+            self.state["hidden"] = tuple([hidden0, hidden1])
         else:  # GRU
             self.state["hidden"] = (_fix_enc_hidden(encoder_final), )
 
