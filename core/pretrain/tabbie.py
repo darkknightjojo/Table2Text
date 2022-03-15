@@ -38,9 +38,9 @@ def setup_env_variables(params):
         os.environ[name] = val
 
 
-def get_table_embedding(input_json: list):
+def get_table_embedding(embedding_file_path, data_num, config_file, input_json=None):
     # initialize
-    params = load_yaml('cfg/tabbie_ft_col.yml')
+    params = load_yaml(config_file)
     os.environ['CUDA_VISIBLE_DEVICES'] = ','.join(map(str, params['cuda_devices']))
     del params['cuda_devices']
     setup_env_variables(params)
@@ -66,10 +66,10 @@ def get_table_embedding(input_json: list):
     tabbie = TabbieRunner(model, dataset_reader)
 
     if input_json and len(input_json) > 0:
-        table_embeddings = tabbie.run(args.batch_size, None, input_json)
+        table_embeddings = tabbie.run(args.batch_size, None, input_json, data_num)
     else:
-        table_embeddings = tabbie.run(args.batch_size, args.input_file, None)
+        table_embeddings = tabbie.run(args.batch_size, args.input_file, None, data_num)
 
     print(len(table_embeddings))
-    torch.save(table_embeddings, "../../experiments/wikibio/pretrain/table_embedding_1k.pt")
+    torch.save(table_embeddings, embedding_file_path)
     # return re

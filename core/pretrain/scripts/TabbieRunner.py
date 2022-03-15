@@ -27,9 +27,9 @@ class TabbieRunner:
         self.module = model
         self.data_reader = dataset_reader
 
-    def run(self, batch_size: int, input_file: str, input_json: list) -> List[JsonDict]:
+    def run(self, batch_size: int, input_file: str, input_json: list, total) -> List[JsonDict]:
         embeddings = []
-        pbar = tqdm(total=10000)
+        pbar = tqdm(total=total)
         if input_file:
             for batch_json in lazy_groups_of(_get_json_data(input_file), batch_size):
                 for model_input_json, result in zip(batch_json, self._predict_json(batch_json)):

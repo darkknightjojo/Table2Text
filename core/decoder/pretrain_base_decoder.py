@@ -107,7 +107,6 @@ class PretrainBaseRNNDecoder(RNNDecoderBase):
 
         super().init_state(src, memory_bank, table_embeddings)
         repeats = [1] * len(self.state['hidden'][0].shape)
-        repeats[-1] = len(self.rnns)
         self.state['hidden'] = tuple(h.repeat(*repeats) for h in self.state['hidden'])
 
     def _link_states(self, dec_states):
@@ -150,8 +149,7 @@ class PretrainBaseRNNDecoder(RNNDecoderBase):
         emb = self.embeddings(tgt)
         assert emb.dim() == 3  # len x batch x embedding_dim
 
-        dec_states = self._unlink_states(self.state['hidden'])
-        # dec_state = self.state["hidden"]
+        dec_state = self.state["hidden"]
 
         # Input feed concatenates hidden state with
         # input at every time step.

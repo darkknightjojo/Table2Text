@@ -170,6 +170,9 @@ class RNNDecoderBase(DecoderBase):
         if isinstance(encoder_final, tuple):  # LSTM
             self.state["hidden"] = tuple(_fix_enc_hidden(enc_hid)
                                          for enc_hid in encoder_final)
+        elif isinstance(encoder_final, list): # tabbie
+            batch_size = len(encoder_final)
+            self.state["hidden"] = [torch.stack(encoder_final).reshape((1, batch_size, 768))]
         else:  # GRU
             self.state["hidden"] = (_fix_enc_hidden(encoder_final), )
 

@@ -2,7 +2,7 @@
 import torch.nn as nn
 
 
-class T2TModel(nn.Module):
+class NMTModel(nn.Module):
     """
     Core trainable object in OpenNMT. Implements a trainable interface
     for a simple, generic encoder + decoder model.
@@ -13,7 +13,7 @@ class T2TModel(nn.Module):
     """
 
     def __init__(self, encoder, decoder):
-        super(T2TModel, self).__init__()
+        super(NMTModel, self).__init__()
         self.encoder = encoder
         self.decoder = decoder
 
@@ -44,10 +44,11 @@ class T2TModel(nn.Module):
         
         # separate additionnal args for encoder/decoder
         enc_kwargs = {key[4:]: value for key, value in kwargs.items() if key.startswith('enc')}
+        # 将dec_weights转为weights
         dec_kwargs = {key[4:]: value for key, value in kwargs.items() if key.startswith('dec')}
 
-        # enc_state = feature_size * batch_size * hidden_size
-        # memory_bank = src_length * batch_size * hidden_size
+        # enc_state = feature_size * batch_size * hidden_size 保存了每一个时间步的hidden和cell
+        # memory_bank = src_length * batch_size * hidden_size 最后一层的输出
         enc_state, memory_bank, lengths = self.encoder(src, lengths, **enc_kwargs)
 
         if bptt is False:

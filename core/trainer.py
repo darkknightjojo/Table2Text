@@ -393,7 +393,7 @@ class Trainer(object):
                     embeddings = []
                     for b in range(batch.batch_size):
                         embeddings.append(self.table_embeddings[batch.indices[b]].to(self._dev))
-                    kwargs = {'enc_table_embeddings': embeddings}
+                    kwargs = {'dec_table_embeddings': embeddings}
                 else:
                     kwargs = dict()
 

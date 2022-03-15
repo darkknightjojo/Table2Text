@@ -9,15 +9,17 @@ from itertools import count, zip_longest
 
 import torch
 
-import core.model_builder
+import core.model_builder_switch
 import core.inputters as inputters
 from core import translate
+from core.decoder import PretrainBaseRNNDecoder
 from core.translate.beam_search import BeamSearch
 from core.translate.greedy_search import GreedySearch
 from core.utils.misc import tile, set_random_seed, report_matrix
 from core.utils.alignment import extract_alignment, build_align_pharaoh
 from core.modules.copy_generator import collapse_copy_scores
 from core.decoder.structure_aware import StructureAwareDecoder
+
 
 def build_translator(opt, report_score=True, logger=None, out_file=None):
     if out_file is None:
@@ -130,7 +132,8 @@ class Translator(object):
             report_align=False,
             report_score=True,
             logger=None,
-            seed=-1):
+            seed=-1,
+            tabbie_embeddings=None):
         self.model = model
         self.fields = fields
         tgt_field = dict(self.fields)["tgt"].base_field
@@ -168,6 +171,11 @@ class Translator(object):
             self.rnn_weights = torch.Tensor(rnn_weights).view(1, 1, -1).to(self._dev)
         else:
             self.rnn_weights = None
+
+        if tabbie_embeddings is not None:
+            print(type(self.model.decoder))
+            if isinstance(self.model.decoder, PretrainBaseRNNDecoder):
+                self.table_embedding = torch.load(tabbie_embeddings)
         
         self.min_length = min_length
         self.ratio = ratio
@@ -278,7 +286,8 @@ class Translator(object):
             report_align=report_align,
             report_score=report_score,
             logger=logger,
-            seed=opt.seed)
+            seed=opt.seed,
+            tabbie_embeddings=opt.tabbie_embeddings)
 
     def _log(self, msg):
         if self.logger:
@@ -670,8 +679,13 @@ class Translator(object):
         batch_size = batch.batch_size
 
         # (1) Run the encoder on the src.
+        if self.tabbie_embeddings is not None:
+            embeddings = []
+            for b in range(batch.batch_size):
+                embeddings.append(self.tabbie_embeddings[batch.indices[b]].to(self._dev))
+            kwargs = {'enc_table_embeddings': embeddings}
         src, enc_states, memory_bank, src_lengths = self._run_encoder(batch)
-        self.model.decoder.init_state(src, memory_bank, enc_states)
+        self.model.decoder.init_state(src, memory_bank, enc_states, kwargs)
         # self.model.decoder.init_state(enc_states)
 
         results = {

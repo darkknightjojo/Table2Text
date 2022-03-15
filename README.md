@@ -2,13 +2,18 @@
 毕设模型代码
 
 ## 预训练
+
 ##### 数据处理
+将训练数据的前10000行复制到新文件
 ```
-python3 data/create_json_data.py --train_data data/wikibio/full/1k/train_input.txt --output_data data/pretrain/input_1k.jsonl
+head -n 10000 data/wikibio/full/train_input.txt > data/wikibio/full/1k/train_input.txt
+```
+```
+python3 script/create_json_data.py --src_data data/wikibio/full/1k/train_input.txt --output_data data/pretrain/input_1k.jsonl --task_type train --data_num 72831
 ```
 ##### 获取table embedding
 ```
-python3 core/pretrain/pretrain_main.py
+python3 core/pretrain/pretrain_main.py --embedding_file_path experiments/wikibio/pretrain/test_table_embedding.pt --data_num 1000
 ```
 
 ## 预处理数据

@@ -6,6 +6,7 @@ import torch
 
 from core.inputters.inputter import build_dataset_iter, \
     load_old_vocab, old_style_vocab, build_dataset_iter_multiple
+from core.model_builder_switch import build_model as build_model_switch
 from core.model_builder import build_model
 from core.utils.optimizers import Optimizer
 from core.utils.misc import set_random_seed
@@ -81,7 +82,10 @@ def main(opt, device_id, batch_queue=None, semaphore=None):
                 logger.info(' * %s vocab size = %d' % (sn, len(sf.vocab)))
 
     # Build model.
-    model = build_model(model_opt, opt, fields, checkpoint)
+    if opt.switch:
+        model = build_model_switch(model_opt, opt, fields, checkpoint)
+    else:
+        model = build_model(model_opt, opt, fields, checkpoint)
     n_params, enc, dec = _tally_parameters(model)
     logger.info('encoder: %d' % enc)
     logger.info('decoder: %d' % dec)

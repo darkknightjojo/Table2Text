@@ -4,7 +4,7 @@ import torch
 import numpy as np
 from pathlib import Path
 from typing import List
-from util import Util
+from core.pretrain.scripts.util import Util
 from allennlp.data.instance import Instance
 from allennlp.data.vocabulary import Vocabulary
 from allennlp.data.fields import TextField, ListField

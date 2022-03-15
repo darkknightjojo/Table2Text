@@ -2,17 +2,17 @@
 task_type: 'pred'
 batch_size: '1'
 max_cell_len: '300'
-pred_path: ../../data/pretrain/input_1k.jsonl
+pred_path: data/pretrain/input.jsonl
 # pred_path: ./data/ft_cell/data_jsonl/test.jsonl
-model_path: ./model/model.tar.gz
+model_path: core/pretrain/model/model.tar.gz
 out_dir: ./out/
 out_pred_name: pred_sample.jsonl
 # out_pred_name: out_test.jsonl
 cuda_devices: [0]
 
-clscol_path: ../../data/clscol.npy
-clsrow_path: ../../data/clsrow.npy
-bert_vocab_path: ../../data/bert-base-uncased-vocab.txt
+clscol_path: data/clscol.npy
+clsrow_path: data/clsrow.npy
+bert_vocab_path: data/bert-base-uncased-vocab.txt
 
 
 

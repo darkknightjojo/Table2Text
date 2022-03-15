@@ -91,11 +91,11 @@ if __name__ == "__main__":
             f'-block_ngram_repeat {args.blk}',
             f'-batch_size {args.bsz}',
             f'-gpu {args.gpu}',
-            f'-log_file {log_file}'
+            f'-log_file {log_file}',
         ]
         
         if args.weights:
             weights = ' '.join([str(w) for w in args.weights])
             cmd_args.append(f'-rnn_weights {weights}')
         
-        translate(f'--config translate.cfg {" ".join(cmd_args)}')
+        translate(f'--config cfg/translate_pretrain.cfg {" ".join(cmd_args)}')

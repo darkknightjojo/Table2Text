@@ -185,7 +185,7 @@ class TabbieModel(Model, Registrable):
 
     def forward(self, table_info: Dict[str, str],  # ) -> Dict[str, torch.Tensor]:
                 indexed_headers: Dict[str, torch.LongTensor],  # -> Dict[str, torch.Tensor]:
-                indexed_cells: Dict[str, torch.LongTensor]) -> Dict[str, torch.Tensor]:
+                indexed_cells: Dict[str, torch.LongTensor]):
 
         t_start = time.time()
 
@@ -216,7 +216,7 @@ class TabbieModel(Model, Registrable):
         #     self.dump_emb(table_info, row_embs, col_embs)
         # return out_dict
     #     只返回行embedding
-        return [row_embs[0][2][0]]
+        return (row_embs[0][0][0], row_embs[0][2][0])
 
     @staticmethod
     def add_emb(out_dict, row_embs, col_embs):

@@ -73,7 +73,7 @@ def model_opts(parser):
               help="Type of encoder layer to use. Options are "
                    "[rnn|brnn|mean|transformer|cnn].")
     group.add('--decoder_type', '-decoder_type', type=str, default='rnn',
-              choices=['rnn', 'transformer', 'cnn', 'brnn'],
+              choices=['rnn', 'transformer', 'cnn', 'brnn', 'pbrnn'],
               help="Type of decoder layer to use.  Options are "
                    "[rnn|transformer|cnn|mbrnn].")
     group.add('--bidirectional_encoder', '-bidirectional_encoder',
@@ -113,8 +113,6 @@ def model_opts(parser):
               help='Probability of using random branch weights for decoding.')
     group.add('--weights_file', '-weights_file', type=str, default='',
               help='Path to the weights used to merge branches in multi branch decoder')
-    group.add('--tabbie_embeddings', '-tabbie_embeddings', type=str, default='',
-              help='Path to the embeddings used in pretrain_base_decoder')
 
     group.add('--input_feed', '-input_feed', type=int, default=1,
               help="Feed the context vector at each time step as "
@@ -138,6 +136,8 @@ def model_opts(parser):
               help="Type of context gate to use. "
                    "Do not select for no context gate.")
 
+    group.add('--tabbie_embeddings', '-tabbie_embeddings', type=str, default='',
+              help='Path to the embeddings used in pretrain_base_decoder')
     # Attention options
     group = parser.add_argument_group('Model- Attention')
     group.add('--global_attention', '-global_attention',
@@ -348,6 +348,9 @@ def train_opts(parser):
     """ Training and saving options """
 
     group = parser.add_argument_group('General')
+    group.add('--switch', '-switch', required=False, default=False,
+              help='Path prefix to the ".train.pt" and '
+                   '".valid.pt" file path from preprocess.py')
     group.add('--data', '-data', required=True,
               help='Path prefix to the ".train.pt" and '
                    '".valid.pt" file path from preprocess.py')
@@ -774,7 +777,8 @@ def translate_opts(parser):
               type=int, default=3, choices=[3, 1],
               help="Using grayscale image can training "
                    "model faster and smaller")
-
+    group.add('--tabbie_embeddings', '-tabbie_embeddings', type=str, default='',
+                  help='Path to the embeddings used in pretrain_base_decoder')
 
 # Copyright 2016 The Chromium Authors. All rights reserved.
 # Use of this source code is governed by a BSD-style license that can be

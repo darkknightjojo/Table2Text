@@ -9,8 +9,8 @@ from torch.nn.init import xavier_uniform_
 
 import core.inputters as inputters
 import core.modules
+from core.models.model_switch import SwitchModel
 from core.encoder import str2enc
-
 from core.decoder import str2dec
 
 from core.modules import Embeddings, VecEmbedding, CopyGenerator
@@ -72,9 +72,8 @@ def build_encoder(opt, embeddings):
         embeddings (Embeddings): vocab embeddings for this encoder.
     """
     enc_type = opt.encoder_type if opt.model_type == "text" \
-        or opt.model_type == "vec" else opt.model_type
+                                   or opt.model_type == "vec" else opt.model_type
     return str2enc[enc_type].from_opt(opt, embeddings)
-
 
 
 def build_decoder(opt, embeddings, dims=None):
@@ -86,7 +85,7 @@ def build_decoder(opt, embeddings, dims=None):
         dims (tuple of int): used when Encoder/Decoder are structure_aware
     """
     dec_type = "ifrnn" if opt.decoder_type == "rnn" and opt.input_feed \
-               else opt.decoder_type
+        else opt.decoder_type
     if dims is not None:
         return str2dec[dec_type].from_opt(opt, embeddings, dims)
     return str2dec[dec_type].from_opt(opt, embeddings)
@@ -148,40 +147,27 @@ def build_base_model(model_opt, fields, gpu, checkpoint=None, gpu_id=None):
         src_emb = build_embeddings(model_opt, src_field)
     else:
         src_emb = None
-
-    # Build encoder.
-    encoder = build_encoder(model_opt, src_emb)
-    
-    if model_opt.decoder_type == 'sarnn':
-        dims = (
-            encoder.embeddings.emb_luts[0].embedding_dim,
-            encoder.embeddings.emb_luts[1].embedding_dim
-        )
-    else:
-        dims = None
-
-    # Build decoder.
-    tgt_field = fields["tgt"]
-    tgt_emb = build_embeddings(model_opt, tgt_field, for_encoder=False)
+    dims = None
 
     # Share the embedding matrix - preprocess with share_vocab required.
-    if model_opt.share_embeddings:
-        # src/tgt vocab should be the same if `-share_vocab` is specified.
-        assert src_field.base_field.vocab == tgt_field.base_field.vocab, \
-            "preprocess with -share_vocab if you use share_embeddings"
+    # if model_opt.share_embeddings:
+    #     # src/tgt vocab should be the same if `-share_vocab` is specified.
+    #     assert src_field.base_field.vocab == tgt_field.base_field.vocab, \
+    #         "preprocess with -share_vocab if you use share_embeddings"
+    #     tgt_emb.word_lut.weight = src_emb.word_lut.weight
 
-        tgt_emb.word_lut.weight = src_emb.word_lut.weight
-
-    decoder = build_decoder(model_opt, tgt_emb, dims)
-
-    # Build NMTModel(= encoder + decoder).
+    # Build SwitchModel(= encoder + decoder).
     if gpu and gpu_id is not None:
         device = torch.device("cuda", gpu_id)
     elif gpu and not gpu_id:
         device = torch.device("cuda")
     elif not gpu:
         device = torch.device("cpu")
-    model = core.models.NMTModel(encoder, decoder)
+
+    tgt_field = fields["tgt"]
+    tgt_emb = build_embeddings(model_opt, tgt_field, for_encoder=False)
+
+    model = SwitchModel(model_opt, src_emb, tgt_emb, dims)
 
     # Build Generator.
     if not model_opt.copy_attn:
@@ -195,15 +181,15 @@ def build_base_model(model_opt, fields, gpu, checkpoint=None, gpu_id=None):
             Cast(torch.float32),
             gen_func
         )
-        if model_opt.share_decoder_embeddings:
-            generator[0].weight = decoder.embeddings.word_lut.weight
+        # if model_opt.share_decoder_embeddings:
+        #     generator[0].weight = decoder.embeddings.word_lut.weight
     else:
         tgt_base_field = fields["tgt"].base_field
         vocab_size = len(tgt_base_field.vocab)
         pad_idx = tgt_base_field.vocab.stoi[tgt_base_field.pad_token]
         generator = CopyGenerator(model_opt.dec_rnn_size, vocab_size, pad_idx)
-        if model_opt.share_decoder_embeddings:
-            generator.linear.weight = decoder.embeddings.word_lut.weight
+        # if model_opt.share_decoder_embeddings:
+        #     generator.linear.weight = decoder.embeddings.word_lut.weight
 
     # Load the model states from checkpoint or initialize them.
     if checkpoint is not None:
@@ -235,12 +221,20 @@ def build_base_model(model_opt, fields, gpu, checkpoint=None, gpu_id=None):
                 if p.dim() > 1:
                     xavier_uniform_(p)
 
-        if hasattr(model.encoder, 'embeddings'):
-            model.encoder.embeddings.load_pretrained_vectors(
-                model_opt.pre_word_vecs_enc)
-        if hasattr(model.decoder, 'embeddings'):
-            model.decoder.embeddings.load_pretrained_vectors(
-                model_opt.pre_word_vecs_dec)
+        if isinstance(model, SwitchModel):
+            if hasattr(model.rnn1, 'embeddings'):
+                model.rnn1.embeddings.load_pretrained_vectors(
+                    model_opt.pre_word_vecs_enc)
+            if hasattr(model.rnn2, 'embeddings'):
+                model.rnn2.embeddings.load_pretrained_vectors(
+                    model_opt.pre_word_vecs_dec)
+        else:
+            if hasattr(model.encoder, 'embeddings'):
+                model.encoder.embeddings.load_pretrained_vectors(
+                    model_opt.pre_word_vecs_enc)
+            if hasattr(model.decoder, 'embeddings'):
+                model.decoder.embeddings.load_pretrained_vectors(
+                    model_opt.pre_word_vecs_dec)
 
     model.generator = generator
     model.to(device)
