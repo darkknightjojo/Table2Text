@@ -84,7 +84,6 @@ if __name__ == "__main__":
         
         cmd_args = [
             f'-model {model}',
-            f'-src {src}',
             f'-tgt {tgt}',
             f'-output {output}',
             f'-beam_size {args.bms}',

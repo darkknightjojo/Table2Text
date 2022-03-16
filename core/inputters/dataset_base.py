@@ -161,5 +161,4 @@ class Dataset(TorchtextDataset):
                 readers.append(field["reader"])
                 data.append((name, field["data"]))
                 dirs.append(field["dir"])
-        print("######0.5")
         return readers, data, dirs

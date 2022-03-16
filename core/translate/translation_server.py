@@ -21,7 +21,7 @@ from core.utils.misc import set_random_seed
 from core.utils.misc import check_model_config
 from core.utils.alignment import to_word_align
 from core.utils.parse import ArgumentParser
-from core.translate.translator import build_translator
+from core.translate.translator_switch import build_translator
 
 
 def critical(func):

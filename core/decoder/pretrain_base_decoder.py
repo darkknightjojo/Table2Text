@@ -100,12 +100,14 @@ class PretrainBaseRNNDecoder(RNNDecoderBase):
         Therefore we cat all hidden_states (and cell_states) on the last dim (features dim)
         We will be able to _unlink_states later when needed inside the _run_forward_pass
         """
-        # 使用tabbie的输出作为rnn初始化的张量
-        # batch_size * 768
-        table_embeddings = kwargs.pop('table_embeddings', None)
-        assert table_embeddings is not None
+        if kwargs is not None:
+            # 使用tabbie的输出作为rnn初始化的张量
+            # batch_size * 768
+            table_embeddings = kwargs.pop('table_embeddings', None)
+            assert table_embeddings is not None
+            encoder_final = table_embeddings
 
-        super().init_state(src, memory_bank, table_embeddings)
+        super().init_state(src, memory_bank, encoder_final)
         repeats = [1] * len(self.state['hidden'][0].shape)
         self.state['hidden'] = tuple(h.repeat(*repeats) for h in self.state['hidden'])
 

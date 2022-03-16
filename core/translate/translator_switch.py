@@ -9,7 +9,7 @@ from itertools import count, zip_longest
 
 import torch
 
-import core.model_builder
+import core.model_builder_switch
 import core.inputters as inputters
 from core import translate
 from core.decoder import PretrainBaseRNNDecoder
@@ -25,7 +25,7 @@ def build_translator(opt, report_score=True, logger=None, out_file=None):
     if out_file is None:
         out_file = codecs.open(opt.output, 'w+', 'utf-8')
 
-    load_test_model = core.model_builder.load_test_model
+    load_test_model = core.model_builder_switch.load_test_model
     fields, model, model_opt = load_test_model(opt)
 
     scorer = core.translate.GNMTGlobalScorer.from_opt(opt)
@@ -155,10 +155,10 @@ class Translator(object):
         self.beam_size = beam_size
         self.random_sampling_temp = random_sampling_temp
         self.sample_from_topk = random_sampling_topk
-
+        
         if rnn_weights is not None:
             print(type(self.model.decoder))
-            if isinstance(self.model.decoder, StructureAwareDecoder):
+            if isinstance(self.model.decoder, StructureAwareDecoder) :
                 if not len(rnn_weights) == len(self.model.decoder.rnn):
                     raise ValueError('Please specify exactly on weights per branch'
                                      f'Got {len(rnn_weights)} weights and '
@@ -175,8 +175,8 @@ class Translator(object):
         if tabbie_embeddings is not None:
             print(type(self.model.decoder))
             if isinstance(self.model.decoder, PretrainBaseRNNDecoder):
-                self.tabbie_embeddings = torch.load(tabbie_embeddings)
-
+                self.table_embedding = torch.load(tabbie_embeddings)
+        
         self.min_length = min_length
         self.ratio = ratio
         self.stepwise_penalty = stepwise_penalty
@@ -222,7 +222,7 @@ class Translator(object):
                 "log_probs": []}
 
         set_random_seed(seed, self._use_cuda)
-
+        
         assert not self.model.training
 
     @classmethod
@@ -296,13 +296,13 @@ class Translator(object):
             print(msg)
 
     def _gold_score(self, batch, memory_bank, src_lengths, src_vocabs,
-                    use_src_map, enc_states, batch_size, src, **kwargs):
+                    use_src_map, enc_states, batch_size, src):
         if "tgt" in batch.__dict__:
             gs = self._score_target(
                 batch, memory_bank, src_lengths, src_vocabs,
                 batch.src_map if use_src_map else None)
             # self.model.decoder.init_state(src, memory_bank, enc_states)
-            self.model.decoder.init_state(src, memory_bank, enc_states, **kwargs)
+            self.model.decoder.init_state(src, memory_bank, enc_states)
         else:
             gs = [0] * batch_size
         return gs
@@ -399,7 +399,7 @@ class Translator(object):
                                           in align_pharaohs]
                     n_best_preds = [pred + " ||| " + align
                                     for pred, align in zip(
-                            n_best_preds, n_best_preds_align)]
+                                        n_best_preds, n_best_preds_align)]
                 all_predictions += [n_best_preds]
                 self.out_file.write('\n'.join(n_best_preds) + '\n')
                 self.out_file.flush()
@@ -457,9 +457,9 @@ class Translator(object):
             total_time = end_time - start_time
             self._log("Total translation time (s): %f" % total_time)
             self._log("Average translation time (s): %f" % (
-                    total_time / len(all_predictions)))
+                total_time / len(all_predictions)))
             self._log("Tokens per second: %f" % (
-                    pred_words_total / total_time))
+                pred_words_total / total_time))
 
         if self.dump_beam:
             import json
@@ -577,17 +577,17 @@ class Translator(object):
 
     def _run_encoder(self, batch):
         src, src_lengths = batch.src if isinstance(batch.src, tuple) \
-            else (batch.src, None)
+                           else (batch.src, None)
 
-        enc_states, memory_bank, src_lengths = self.model.encoder(
+        enc_states, memory_bank, src_lengths = self.model.rnn1(
             src, src_lengths)
         if src_lengths is None:
             assert not isinstance(memory_bank, tuple), \
                 'Ensemble decoding only supported for text data'
             src_lengths = torch.Tensor(batch.batch_size) \
-                .type_as(memory_bank) \
-                .long() \
-                .fill_(memory_bank.size(0))
+                               .type_as(memory_bank) \
+                               .long() \
+                               .fill_(memory_bank.size(0))
         return src, enc_states, memory_bank, src_lengths
 
     def _decode_and_generate(
@@ -610,16 +610,16 @@ class Translator(object):
         # and [src_len, batch, hidden] as memory_bank
         # in case of inference tgt_len = 1, batch = beam times batch_size
         # in case of Gold Scoring tgt_len = actual length, batch = 1 batch
-
+        
         tgt_len, batch_size, nfeats = decoder_in.shape
-
+        
         if self.rnn_weights is not None:
-            kwargs = {'weights': self.rnn_weights.repeat(tgt_len, batch_size, 1)}
+            kwargs = {'weights' : self.rnn_weights.repeat(tgt_len, batch_size, 1)}
         else:
             kwargs = dict()
-
-        dec_out, dec_attn = self.model.decoder(
-            decoder_in, memory_bank, memory_lengths=memory_lengths,
+        
+        _, dec_out, dec_attn = self.model.decoder(
+            decoder_in, memory_bank, memory_lengths=memory_lengths, rnn=self.model.rnn2,
             **kwargs
         )
 
@@ -681,17 +681,11 @@ class Translator(object):
         # (1) Run the encoder on the src.
         if self.tabbie_embeddings is not None:
             embeddings = []
-            try:
-                for b in range(batch.batch_size):
-                    embeddings.append(self.tabbie_embeddings[batch.indices[b]])
-            except IndexError:
-                print(batch)
-            kwargs = {'table_embeddings': embeddings}
+            for b in range(batch.batch_size):
+                embeddings.append(self.tabbie_embeddings[batch.indices[b]].to(self._dev))
+            kwargs = {'enc_table_embeddings': embeddings}
         src, enc_states, memory_bank, src_lengths = self._run_encoder(batch)
-        if kwargs is not None:
-            self.model.decoder.init_state(src, memory_bank, enc_states, **kwargs)
-        else:
-            self.model.decoder.init_state(src, memory_bank, enc_states)
+        self.model.decoder.init_state(src, memory_bank, enc_states, kwargs)
         # self.model.decoder.init_state(enc_states)
 
         results = {
@@ -701,7 +695,7 @@ class Translator(object):
             "batch": batch,
             "gold_score": self._gold_score(
                 batch, memory_bank, src_lengths, src_vocabs, use_src_map,
-                enc_states, batch_size, src, **kwargs)}
+                enc_states, batch_size, src)}
 
         # (2) prep decode_strategy. Possibly repeat src objects.
         src_map = batch.src_map if use_src_map else None
@@ -748,7 +742,7 @@ class Translator(object):
 
             if parallel_paths > 1 or any_finished:
                 self.model.decoder.map_state(
-                    lambda state, dim: state.index_select(dim, select_indices))
+                    lambda state, dim: state.index_select(dim, select_indices), select_indices)
 
         results["scores"] = decode_strategy.scores
         results["predictions"] = decode_strategy.predictions
