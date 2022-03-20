@@ -24,7 +24,7 @@ _DEFAULT_WEIGHTS = "best.th"
 
 
 def save_embedding(embeddings, save_path, rank):
-    save_path += save_path + "_" + rank + ".pt"
+    save_path = save_path + "_" + str(rank) + ".pt"
     torch.save(embeddings, save_path)
     logging.info("save embedding file to" + save_path)
 
@@ -44,7 +44,7 @@ class TabbieRunner:
                 embeddings.append(result)
                 pbar.update(batch_size)
                 if len(embeddings) == save_step:
-                    save_embedding(embeddings, save_path)
+                    save_embedding(embeddings, save_path, rank)
                     rank += 1
                     embeddings.clear()
         else:
@@ -53,7 +53,7 @@ class TabbieRunner:
                 embeddings.append(result)
                 pbar.update(batch_size)
                 if len(embeddings) == save_step:
-                    save_embedding(embeddings, save_path)
+                    save_embedding(embeddings, save_path, rank)
                     rank += 1
                     embeddings.clear()
 

@@ -17,6 +17,6 @@ if __name__ == '__main__':
                         help="save_step, 参考batch_size设置，否则读取时会跨文件")
 
     params = parser.parse_args()
-    get_table_embedding(params.embedding_file_path, params.data_num, params.config_file)
+    get_table_embedding(params.embedding_file_path, params.data_num, params.config_file, None, params.save_step)
     # x = torch.load("../../experiments/wikibio/pretrain/table_embedding.pt")
     # print(x[0])

@@ -13,7 +13,7 @@ python3 script/create_json_data.py --src_data data/wikibio/full/1k/train_input.t
 ```
 ##### 获取table embedding
 ```
-python3 core/pretrain/pretrain_main.py --embedding_file_path experiments/wikibio/pretrain/test_table_embedding.pt --data_num 1000 --save_step 10
+CUDA_VISIBLE_DEVICES=0 python3 core/pretrain/pretrain_main.py --embedding_file_path experiments/wikibio/pretrain/test_table_embedding.pt --data_num 1000 --save_step 10
 ```
 
 ## 预处理数据
