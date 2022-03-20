@@ -398,11 +398,11 @@ class Trainer(object):
                     embeddings = []
                     for b in range(batch.batch_size):
                         if batch.indices[b] < self.table_embeddings_count:
-                            embeddings.append(self.table_embeddings[batch.indices[b]])
+                            embeddings.append(self.table_embeddings[batch.indices[b % self.table_embeddings_count]])
                         else:
                             self.table_embeddings = self.load_table_embeddings_file(self.table_embeddings_path,
                                                                                     self.table_embeddings_rank + 1)
-                            embeddings.append(self.table_embeddings[batch.indices[b]])
+                            embeddings.append(self.table_embeddings[batch.indices[b % self.table_embeddings_count]])
                     kwargs = {'dec_table_embeddings': embeddings}
                 else:
                     kwargs = dict()
