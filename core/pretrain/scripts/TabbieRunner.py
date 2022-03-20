@@ -1,9 +1,11 @@
 import json
+import logging
 import sys
 from itertools import islice
 from typing import Iterator, TypeVar, Iterable, List
 
 import numpy as np
+import torch
 from allennlp.common import JsonDict
 from allennlp.data import Instance, DatasetReader
 from tqdm import tqdm
@@ -21,25 +23,40 @@ _WEIGHTS_NAME = "weights.th"
 _DEFAULT_WEIGHTS = "best.th"
 
 
+def save_embedding(embeddings, save_path, rank):
+    save_path += save_path + "_" + rank + ".pt"
+    torch.save(embeddings, save_path)
+    logging.info("save embedding file to" + save_path)
+
 class TabbieRunner:
 
     def __init__(self, model: TabbieModel, dataset_reader: DatasetReader):
         self.module = model
         self.data_reader = dataset_reader
 
-    def run(self, batch_size: int, input_file: str, input_json: list, total) -> List[JsonDict]:
+    def run(self, batch_size: int, input_file: str, input_json: list, total, save_path, save_step) -> List[JsonDict]:
         embeddings = []
         pbar = tqdm(total=total)
+        rank = 0
         if input_file:
             for batch_json in lazy_groups_of(_get_json_data(input_file), batch_size):
                 result = self._predict_json(batch_json)
                 embeddings.append(result)
                 pbar.update(batch_size)
+                if len(embeddings) == save_step:
+                    save_embedding(embeddings, save_path)
+                    rank += 1
+                    embeddings.clear()
         else:
             for batch_json in lazy_groups_of(input_json, batch_size):
                 result = self._predict_json(batch_json)
                 embeddings.append(result)
                 pbar.update(batch_size)
+                if len(embeddings) == save_step:
+                    save_embedding(embeddings, save_path)
+                    rank += 1
+                    embeddings.clear()
+
         return embeddings
 
     def _predict_json(self, batch_data: List[JsonDict]) -> Iterator[str]:

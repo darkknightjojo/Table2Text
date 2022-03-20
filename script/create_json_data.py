@@ -1,6 +1,6 @@
 import json
 import re
-
+import codecs
 from tqdm import tqdm
 
 from core.utils.parse import ArgumentParser
@@ -8,10 +8,10 @@ from core.utils.parse import ArgumentParser
 
 def create_pretrain_data(src_data, output_data, task_type, total):
     index = 0
-    sp = '\\' # python里面识别不了'|'字符，所以用'\'代替
+    sp = u'|'
     prefix = 'train_' if task_type == "train" else 'test_'
     pbar = tqdm(total=total)
-    with open(src_data, 'r', encoding='utf-8') as f:
+    with codecs.open(src_data, "r", "utf-8") as f:
         line = f.readline()
         while line:
             one = {}
@@ -19,11 +19,11 @@ def create_pretrain_data(src_data, output_data, task_type, total):
             headers = []
             cells = []
 
-            array_ = line.split(" ")
+            array_ = line.split()
             last_header = ''
             content = ''
             for a in array_:
-                words = a.split(sp)
+                words = a.split(u"￨")
                 # 不相等说明要读取新的header了
                 if last_header != words[1]:
                     headers.append(words[1])
@@ -41,7 +41,7 @@ def create_pretrain_data(src_data, output_data, task_type, total):
             table_data.append(cells)
             one['id'] = prefix + str(index)
             one['table_data'] = table_data
-            with open(output_data, 'a') as jf:
+            with open(output_data, 'a+') as jf:
                 json.dump(one, jf)
                 jf.write("\n")
             line = f.readline()

@@ -66,10 +66,10 @@ def get_table_embedding(embedding_file_path, data_num, config_file, input_json=N
     tabbie = TabbieRunner(model, dataset_reader)
 
     if input_json and len(input_json) > 0:
-        table_embeddings = tabbie.run(args.batch_size, None, input_json, data_num)
+        table_embeddings = tabbie.run(args.batch_size, None, input_json, data_num, embedding_file_path, 64000)
     else:
-        table_embeddings = tabbie.run(args.batch_size, args.input_file, None, data_num)
+        table_embeddings = tabbie.run(args.batch_size, args.input_file, None, data_num, embedding_file_path, 64000)
 
     print(len(table_embeddings))
-    torch.save(table_embeddings, embedding_file_path)
+    # torch.save(table_embeddings, embedding_file_path)
     # return re

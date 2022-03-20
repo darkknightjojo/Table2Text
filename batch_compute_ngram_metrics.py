@@ -1,7 +1,7 @@
 import argparse
 
 from nltk.translate.bleu_score import corpus_bleu
-from data_utils import FileIterable
+from script.data_utils import FileIterable
 import os
 from parent.parent import parent
 from tqdm import tqdm
