@@ -216,8 +216,10 @@ class TabbieModel(Model, Registrable):
         #     self.dump_emb(table_info, row_embs, col_embs)
         # return out_dict
     #     只返回行embedding
-        result = tuple([row_embs[0][0][0], row_embs[0][2][0]])
-        return [result]
+        result = []
+        for i in range(0, bs):
+            result.append(tuple([row_embs[i][0][0], row_embs[i][2][0]]))
+        return result
 
     @staticmethod
     def add_emb(out_dict, row_embs, col_embs):

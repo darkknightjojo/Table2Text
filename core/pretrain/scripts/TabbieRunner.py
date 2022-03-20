@@ -41,7 +41,7 @@ class TabbieRunner:
         if input_file:
             for batch_json in lazy_groups_of(_get_json_data(input_file), batch_size):
                 result = self._predict_json(batch_json)
-                embeddings.append(result)
+                embeddings.extend(result)
                 pbar.update(batch_size)
                 if len(embeddings) == save_step:
                     save_embedding(embeddings, save_path, rank)
@@ -50,7 +50,7 @@ class TabbieRunner:
         else:
             for batch_json in lazy_groups_of(input_json, batch_size):
                 result = self._predict_json(batch_json)
-                embeddings.append(result)
+                embeddings.extend(result)
                 pbar.update(batch_size)
                 if len(embeddings) == save_step:
                     save_embedding(embeddings, save_path, rank)
