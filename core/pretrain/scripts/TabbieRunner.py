@@ -43,7 +43,7 @@ class TabbieRunner:
                 result = self._predict_json(batch_json)
                 embeddings.extend(result)
                 pbar.update(batch_size)
-                if len(embeddings) == save_step:
+                if len(embeddings) >= save_step:
                     save_embedding(embeddings, save_path, rank)
                     rank += 1
                     embeddings.clear()
@@ -52,11 +52,11 @@ class TabbieRunner:
                 result = self._predict_json(batch_json)
                 embeddings.extend(result)
                 pbar.update(batch_size)
-                if len(embeddings) == save_step:
+                if len(embeddings) >= save_step:
                     save_embedding(embeddings, save_path, rank)
                     rank += 1
                     embeddings.clear()
-
+        save_embedding(embeddings, save_path, rank)
         return embeddings
 
     def _predict_json(self, batch_data: List[JsonDict]) -> Iterator[str]:

@@ -13,7 +13,7 @@ if __name__ == '__main__':
                         help="data num")
     parser.add_argument("--config_file", default='core/pretrain/cfg/tabbie_ft_col.yml', type=str,
                         help="embedding file path")
-    parser.add_argument("--save_step", default=64000, type=int,
+    parser.add_argument("--save_step", default=20000, type=int,
                         help="save_step, 参考batch_size设置，否则读取时会跨文件")
 
     params = parser.parse_args()
