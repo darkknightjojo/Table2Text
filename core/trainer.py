@@ -155,9 +155,11 @@ class Trainer(object):
 
         # Load tabbie_embedding in case of pretrain_base rnn training
         if tabbie_embeddings:
+            self.table_embeddings_count = 0
             self.table_embeddings_rank = 0
             self.table_embeddings_path = tabbie_embeddings
             self.table_embeddings = self.load_table_embeddings_file(tabbie_embeddings, 0)
+            self.table_embeddings_count += len(self.table_embeddings)
         else:
             self.table_embeddings = None
 
@@ -171,7 +173,7 @@ class Trainer(object):
 
     @staticmethod
     def load_table_embeddings_file(path, rank):
-        path = path + rank + ".pt"
+        path = path + str(rank) + ".pt"
         return torch.load(path)
 
     def _accum_count(self, step):
@@ -395,11 +397,11 @@ class Trainer(object):
                 if self.table_embeddings:
                     embeddings = []
                     for b in range(batch.batch_size):
-                        if batch.indices[b] < len(self.table_embeddings) * (self.table_embeddings_rank + 1):
+                        if batch.indices[b] < self.table_embeddings_count:
                             embeddings.append(self.table_embeddings[batch.indices[b]])
                         else:
                             self.table_embeddings = self.load_table_embeddings_file(self.table_embeddings_path,
-                                                                                    self.table_embeddings_path + 1)
+                                                                                    self.table_embeddings_rank + 1)
                             embeddings.append(self.table_embeddings[batch.indices[b]])
                     kwargs = {'dec_table_embeddings': embeddings}
                 else:
