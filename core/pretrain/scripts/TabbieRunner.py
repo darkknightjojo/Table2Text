@@ -56,7 +56,8 @@ class TabbieRunner:
                     save_embedding(embeddings, save_path, rank)
                     rank += 1
                     embeddings.clear()
-        save_embedding(embeddings, save_path, rank)
+        if len(embeddings > 0):
+            save_embedding(embeddings, save_path, rank)
         return embeddings
 
     def _predict_json(self, batch_data: List[JsonDict]) -> Iterator[str]:

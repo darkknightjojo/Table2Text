@@ -155,11 +155,15 @@ class Trainer(object):
 
         # Load tabbie_embedding in case of pretrain_base rnn training
         if tabbie_embeddings:
+            # 每个文件中存储的tensor的数量
             self.table_embeddings_count = 0
+            # 当前加载的文件的编号
             self.table_embeddings_rank = 0
+            # 文件保存路径
             self.table_embeddings_path = tabbie_embeddings
+            # 加载进内存的张量
             self.table_embeddings = self.load_table_embeddings_file(tabbie_embeddings, 0)
-            self.table_embeddings_count += len(self.table_embeddings)
+            self.table_embeddings_count = len(self.table_embeddings)
         else:
             self.table_embeddings = None
 
@@ -397,12 +401,17 @@ class Trainer(object):
                 if self.table_embeddings:
                     embeddings = []
                     for b in range(batch.batch_size):
-                        if batch.indices[b] < self.table_embeddings_count:
-                            embeddings.append(self.table_embeddings[batch.indices[b % self.table_embeddings_count]])
+                        # 计算文件编号
+                        quotient = (batch.indices[b] // self.table_embeddings_count).item()
+                        remainder = (batch.indices[b] % self.table_embeddings_count).item()
+                        # 如果该文件已经加载，直接读取
+                        if quotient == self.table_embeddings_rank:
+                            embeddings.append(self.table_embeddings[remainder])
                         else:
                             self.table_embeddings = self.load_table_embeddings_file(self.table_embeddings_path,
-                                                                                    self.table_embeddings_rank + 1)
-                            embeddings.append(self.table_embeddings[batch.indices[b % self.table_embeddings_count]])
+                                                                                    quotient)
+                            self.table_embeddings_rank = quotient
+                            embeddings.append(self.table_embeddings[remainder])
                     kwargs = {'dec_table_embeddings': embeddings}
                 else:
                     kwargs = dict()

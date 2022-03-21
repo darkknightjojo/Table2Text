@@ -2,7 +2,7 @@
 task_type: 'pred'
 batch_size: '2'
 max_cell_len: '300'
-pred_path: data/pretrain/test_input_1k.jsonl
+pred_path: data/pretrain/input_1k.jsonl
 # pred_path: ./data/ft_cell/data_jsonl/test.jsonl
 model_path: core/pretrain/model/model.tar.gz
 out_dir: ./out/
