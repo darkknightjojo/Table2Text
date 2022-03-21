@@ -408,10 +408,14 @@ class Trainer(object):
                         if quotient == self.table_embeddings_rank:
                             embeddings.append(self.table_embeddings[remainder])
                         else:
+                            # 释放显存
+                            self.table_embeddings = None
+                            torch.cuda.empty_cache()
                             self.table_embeddings = self.load_table_embeddings_file(self.table_embeddings_path,
                                                                                     quotient)
                             self.table_embeddings_rank = quotient
                             embeddings.append(self.table_embeddings[remainder])
+
                     kwargs = {'dec_table_embeddings': embeddings}
                 else:
                     kwargs = dict()
