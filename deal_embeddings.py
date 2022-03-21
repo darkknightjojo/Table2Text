@@ -20,3 +20,4 @@ if __name__=='__main__':
         new_file_2 = "_".join(prefix[:-1]) + '_' + str(2 * rank + 1) + '.pt'
         torch.save(new_embeddings, dir_path + new_file_1)
         torch.save(embeddings, dir_path + new_file_2)
+        torch.cuda.empty_cache()

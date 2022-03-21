@@ -574,11 +574,14 @@ def _pool(data, batch_size, batch_size_fn, batch_size_multiple,
             data, batch_size * pool_factor,
             batch_size_fn=batch_size_fn):
         p_batch = list(batch_iter(
-            sorted(p, key=sort_key),
+            # sorted(p, key=sort_key),
+            p,
             batch_size,
             batch_size_fn=batch_size_fn,
             batch_size_multiple=batch_size_multiple))
-        for b in random_shuffler(p_batch):
+        # for b in random_shuffler(p_batch):
+        #     yield b
+        for b in p_batch:
             yield b
 
 
@@ -596,6 +599,7 @@ class OrderedIterator(torchtext.data.Iterator):
         self.yield_raw_example = yield_raw_example
         self.dataset = dataset
         self.pool_factor = pool_factor
+
 
     def create_batches(self):
         if self.train:
@@ -756,6 +760,7 @@ class DatasetLazyIter(object):
             device=self.device,
             train=self.is_train,
             sort=False,
+            shuffle=False,
             sort_within_batch=True,
             repeat=False,
             yield_raw_example=self.yield_raw_example
