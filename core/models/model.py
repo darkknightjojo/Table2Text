@@ -47,7 +47,7 @@ class NMTModel(nn.Module):
         # 将dec_weights转为weights
         dec_kwargs = {key[4:]: value for key, value in kwargs.items() if key.startswith('dec')}
 
-        # enc_state = feature_size * batch_size * hidden_size 保存了每一个时间步的hidden和cell
+        # enc_state = layer_num * batch_size * hidden_size 保存了每一个时间步的hidden和cell
         # memory_bank = src_length * batch_size * hidden_size 最后一层的输出
         enc_state, memory_bank, lengths = self.encoder(src, lengths, **enc_kwargs)
 
