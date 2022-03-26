@@ -56,7 +56,7 @@ class TabbieRunner:
                     save_embedding(embeddings, save_path, rank)
                     rank += 1
                     embeddings.clear()
-        if len(embeddings > 0):
+        if len(embeddings) > 0:
             save_embedding(embeddings, save_path, rank)
         return embeddings
 

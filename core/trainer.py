@@ -164,6 +164,9 @@ class Trainer(object):
             # 加载进内存的张量
             self.table_embeddings = self.load_table_embeddings_file(tabbie_embeddings, 0)
             self.table_embeddings_count = len(self.table_embeddings)
+            # 线性层，将tabbie的embeddings映射为768
+            self.table_embedding_row_linear = torch.nn.Linear(3 * 768, 768).to(self._dev)
+            self.table_embedding_col_linear = torch.nn.Linear(3 * 768, 768).to(self._dev)
         else:
             self.table_embeddings = None
 
@@ -406,7 +409,7 @@ class Trainer(object):
                         remainder = (batch.indices[b] % self.table_embeddings_count).item()
                         # 如果该文件已经加载，直接读取
                         if quotient == self.table_embeddings_rank:
-                            embeddings.append(self.table_embeddings[remainder])
+                            embeddings.append(self.map_embedding(self.table_embeddings[remainder]))
                         else:
                             # 释放显存
                             self.table_embeddings = None
@@ -414,7 +417,7 @@ class Trainer(object):
                             self.table_embeddings = self.load_table_embeddings_file(self.table_embeddings_path,
                                                                                     quotient)
                             self.table_embeddings_rank = quotient
-                            embeddings.append(self.table_embeddings[remainder])
+                            embeddings.append(self.map_embedding(self.table_embeddings[remainder]))
 
                     kwargs = {'dec_table_embeddings': embeddings}
                 else:
@@ -523,3 +526,12 @@ class Trainer(object):
             return self.report_manager.report_step(
                 learning_rate, step, train_stats=train_stats,
                 valid_stats=valid_stats)
+
+    def map_embedding(self, embeddings):
+
+        assert isinstance(embeddings, tuple)
+
+        row_embeddings = self.table_embedding_row_linear(embeddings[0].reshape(1, 3 * 768)).squeeze()
+        col_embeddings = self.table_embedding_col_linear(embeddings[1].reshape(1, 3 * 768)).squeeze()
+
+        return row_embeddings, col_embeddings

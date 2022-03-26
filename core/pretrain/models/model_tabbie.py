@@ -218,7 +218,8 @@ class TabbieModel(Model, Registrable):
     #     只返回行embedding
         result = []
         for i in range(0, bs):
-            result.append(tuple([row_embs[i][0][0], row_embs[i][2][0]]))
+            # result.append(tuple([row_embs[i][0][0], row_embs[i][2][0]]))
+            result.append((row_embs[i][:, 0], col_embs[i][:, 0]))
         return result
 
     @staticmethod
