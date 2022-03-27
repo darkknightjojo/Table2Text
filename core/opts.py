@@ -75,7 +75,7 @@ def model_opts(parser):
     group.add('--decoder_type', '-decoder_type', type=str, default='rnn',
               choices=['rnn', 'transformer', 'cnn', 'brnn', 'pbrnn'],
               help="Type of decoder layer to use.  Options are "
-                   "[rnn|transformer|cnn|mbrnn].")
+                   "[rnn|transformer|cnn|mbrnn|mblm].")
     group.add('--bidirectional_encoder', '-bidirectional_encoder',
               action="store_true", help='RNNs can be bidirectional')
 
@@ -127,6 +127,30 @@ def model_opts(parser):
               help="The gate type to use in the RNNs")
     # group.add('--residual', '-residual',   action="store_true",
     #                     help="Add residual connections between RNN layers.")
+
+    # ----------------- margin-based-objectives----------------
+    group.add('--train_lm', '-train_lm', action="store_true",
+              help="whether train language model or not, default lm params the same with NMT.")
+    group.add('--lambda_lm', '-lambda_lm', type=float, default=1e-2,
+              help='the weights of language model')
+    group.add('--nmt_lm_loss', '-nmt_lm_loss', type=float, default=-1.0,
+              help='hard margin: the hard threshold of use nmt_pred-lm_pred to be added to loss')
+    group.add('--add_nmt_lm_loss', '-add_nmt_lm_loss', action="store_true",
+              help='nmt_lm_loss = (1-nmt)(nmt-lm), softly add loss')
+    group.add('--add_nmt_lm_loss_fn', '-add_nmt_lm_loss_fn', type=str, default='linear',
+              help='softly add nmt-lm loss, use linear, log, sigmoid, or x3.')
+    group.add('--lambda_add_loss', '-lambda_add_loss', type=float, default=1.0,
+              help='the weights of the added loss.')
+    group.add('--fixed_lm', '-fixed_lm', action="store_true",
+              help='when use lm to train nmt, whether update LM or not.')
+    group.add('--report_lm', '-report_lm', action="store_true",
+              help='when use lm to train nmt, whether update LM or not.')
+    group.add('--weight_sentence', '-weight_sentence', action="store_true",
+              help='add delta weight to whole sentence (ce and margin loss)')
+    group.add('--weight_sentence_thresh', '-weight_sentence_thresh', type=float, default=0.4,
+              help='if delta_percent > thresh, set weight to 0')
+
+    # --------------------------------end---------------------------
 
     group.add('--brnn', '-brnn', action=DeprecateAction,
               help="Deprecated, use `encoder_type`.")

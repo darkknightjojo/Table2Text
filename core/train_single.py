@@ -29,7 +29,7 @@ def _tally_parameters(model):
     for name, param in model.named_parameters():
         if 'encoder' in name or 'rnn1' in name:
             enc += param.nelement()
-        elif 'decoder' in name or 'rnn2' in name:
+        else:
             dec += param.nelement()
     return enc + dec, enc, dec
 

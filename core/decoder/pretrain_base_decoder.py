@@ -101,11 +101,11 @@ class PretrainBaseRNNDecoder(RNNDecoderBase):
         We will be able to _unlink_states later when needed inside the _run_forward_pass
         """
         if kwargs is not None:
-            # 使用tabbie的输出作为rnn初始化的张量
-            # batch_size * 768
-            table_embeddings = kwargs.pop('table_embeddings', None)
-            assert table_embeddings is not None
-            encoder_final = table_embeddings
+            if kwargs['embeddings'] is not None:
+                # 使用tabbie的输出作为rnn初始化的张量
+                # batch_size * 768
+                table_embeddings = kwargs.pop('embeddings', None)
+                encoder_final = table_embeddings
 
         super().init_state(src, memory_bank, encoder_final)
         repeats = [1] * len(self.state['hidden'][0].shape)

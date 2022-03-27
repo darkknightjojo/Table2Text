@@ -1,4 +1,5 @@
 """ module NMT Model base class definition """
+import torch
 import torch.nn as nn
 
 
@@ -12,10 +13,13 @@ class NMTModel(nn.Module):
       decoder (module.decoder.DecoderBase): a decoder object
     """
 
-    def __init__(self, encoder, decoder):
+    def __init__(self, encoder, decoder, row_linear=None, col_linear=None):
         super(NMTModel, self).__init__()
         self.encoder = encoder
         self.decoder = decoder
+        # 线性层，将tabbie的embeddings映射为768
+        self.table_embedding_row_linear = row_linear
+        self.table_embedding_col_linear = col_linear
 
     def forward(self, src, tgt, lengths, bptt=False, with_align=False, **kwargs):
         """Forward propagate a `src` and `tgt` pair for training.
@@ -46,6 +50,15 @@ class NMTModel(nn.Module):
         enc_kwargs = {key[4:]: value for key, value in kwargs.items() if key.startswith('enc')}
         # 将dec_weights转为weights
         dec_kwargs = {key[4:]: value for key, value in kwargs.items() if key.startswith('dec')}
+        # 将table_embeddings转为embeddings
+        table_embeddings = {key[6:]: value for key, value in kwargs.items() if key.startswith('table')}
+
+        # 使用线性层将table_embeddings 映射到 768
+        new_table_embeddings = []
+        for table_embedding in table_embeddings:
+            e = self.map_embedding(table_embeddings)
+            new_table_embeddings.append(e)
+        dec_kwargs["embeddings"] = new_table_embeddings
 
         # enc_state = layer_num * batch_size * hidden_size 保存了每一个时间步的hidden和cell
         # memory_bank = src_length * batch_size * hidden_size 最后一层的输出
@@ -62,3 +75,12 @@ class NMTModel(nn.Module):
     def update_dropout(self, dropout):
         self.encoder.update_dropout(dropout)
         self.decoder.update_dropout(dropout)
+
+    def map_embedding(self, embeddings):
+
+        assert isinstance(embeddings, tuple)
+
+        row_embeddings = self.table_embedding_row_linear(embeddings[0].reshape(1, 3 * 768)).squeeze()
+        col_embeddings = self.table_embedding_col_linear(embeddings[1].reshape(1, 3 * 768)).squeeze()
+
+        return row_embeddings, col_embeddings

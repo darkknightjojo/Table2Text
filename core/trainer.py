@@ -8,6 +8,7 @@
           things to users(i.e. how to do it). Also see train.py(one of the
           users of this library) for the strategy things we do.
 """
+import copy
 
 from torch.nn.utils.rnn import pad_sequence
 
@@ -15,6 +16,7 @@ import torch
 import traceback
 
 from core.metrics import RLLossCompute
+from core.modules.sparse_activations import LogSparsemax
 from core.utils.misc import get_model_device
 from core.utils.logging import logger
 from core.models.model_switch import SwitchModel
@@ -115,8 +117,19 @@ class Trainer(object):
                  report_manager=None, with_align=False, model_saver=None,
                  average_decay=0, average_every=1, model_dtype='fp32',
                  earlystopper=None, dropout=[0.3], dropout_steps=[0],
+                 fixed_lm=False,
+                 nmt_lm_loss=-1.0,
+                 add_nmt_lm_loss=False,
+                 train_lm=False,
+                 add_nmt_lm_loss_fn=None,
+                 lambda_add_loss=1.0,
                  tabbie_embeddings=None):
         # Basic attributes.
+        self.lambda_add_loss = lambda_add_loss
+        self.add_nmt_lm_loss_fn = add_nmt_lm_loss_fn
+        self.train_lm = train_lm
+        self.add_nmt_lm_loss = add_nmt_lm_loss
+        self.nmt_lm_loss = nmt_lm_loss
         self.model = model
         self.train_loss = train_loss
         self.valid_loss = valid_loss
@@ -140,6 +153,9 @@ class Trainer(object):
         self.earlystopper = earlystopper
         self.dropout = dropout
         self.dropout_steps = dropout_steps
+        self.fixed_lm = fixed_lm
+        self.loss_gen = None
+        self.lm_embeddings = None
 
         for i in range(len(self.accum_count_l)):
             assert self.accum_count_l[i] > 0
@@ -164,9 +180,6 @@ class Trainer(object):
             # 加载进内存的张量
             self.table_embeddings = self.load_table_embeddings_file(tabbie_embeddings, 0)
             self.table_embeddings_count = len(self.table_embeddings)
-            # 线性层，将tabbie的embeddings映射为768
-            self.table_embedding_row_linear = torch.nn.Linear(3 * 768, 768).to(self._dev)
-            self.table_embedding_col_linear = torch.nn.Linear(3 * 768, 768).to(self._dev)
         else:
             self.table_embeddings = None
 
@@ -261,6 +274,11 @@ class Trainer(object):
         report_stats = core.utils.Statistics()
         self._start_report_manager(start_time=total_stats.start_time)
 
+        if self.fixed_lm:
+            self.loss_gen = copy.deepcopy(
+                self.model.generator[0] if isinstance(self.model.generator[-1], LogSparsemax) else self.model.generator)
+            self.lm_embeddings = copy.deepcopy(self.model.decoder.embeddings)
+
         for i, (batches, normalization) in enumerate(
                 self._accum_batches(train_iter)):
             step = self.optim.training_step
@@ -280,8 +298,8 @@ class Trainer(object):
                                     (normalization))
 
             self._gradient_accumulation(
-                batches, normalization, total_stats,
-                report_stats)
+                batches, normalization, total_stats, report_stats, self.train_lm, loss_gen=self.loss_gen,
+                lm_embeddings=self.lm_embeddings)
 
             if self.average_decay > 0 and i % self.average_every == 0:
                 self._update_average(step)
@@ -372,8 +390,8 @@ class Trainer(object):
 
         return stats
 
-    def _gradient_accumulation(self, true_batches, normalization, total_stats,
-                               report_stats):
+    def _gradient_accumulation(self, true_batches, normalization, total_stats, report_stats, train_lm, loss_gen=None,
+                               lm_embeddings=None):
         if self.accum_count > 1:
             self.optim.zero_grad()
 
@@ -409,7 +427,7 @@ class Trainer(object):
                         remainder = (batch.indices[b] % self.table_embeddings_count).item()
                         # 如果该文件已经加载，直接读取
                         if quotient == self.table_embeddings_rank:
-                            embeddings.append(self.map_embedding(self.table_embeddings[remainder]))
+                            embeddings.append(self.table_embeddings[remainder])
                         else:
                             # 释放显存
                             self.table_embeddings = None
@@ -417,14 +435,134 @@ class Trainer(object):
                             self.table_embeddings = self.load_table_embeddings_file(self.table_embeddings_path,
                                                                                     quotient)
                             self.table_embeddings_rank = quotient
-                            embeddings.append(self.map_embedding(self.table_embeddings[remainder]))
+                            embeddings.append(self.table_embeddings[remainder])
 
-                    kwargs = {'dec_table_embeddings': embeddings}
+                    kwargs = {'table_embeddings': embeddings}
                 else:
                     kwargs = dict()
 
-                outputs, attns = self.model(src, tgt, src_lengths, bptt=bptt, with_align=self.with_align, **kwargs)
+                out = self.model(src, tgt, src_lengths, bptt=bptt, with_align=self.with_align, **kwargs)
+                if len(out) == 3:
+                    outputs, attns, lm_outputs = out
+                else:
+                    outputs, attns = out
+                    lm_outputs = None
+                del out
                 bptt = True
+
+                # 计算语言模型损失
+                loss_add = None
+                delta_weight = None
+                if (self.nmt_lm_loss != -1.0 or self.add_nmt_lm_loss) and lm_outputs is not None:
+                    generator = self.model.generator[0] if isinstance(self.model.generator[-1],
+                                                                      LogSparsemax) else self.model.generator
+                    # generator is nmt's generator, is changing during training
+                    if loss_gen is None:  # not fixed lm model
+                        loss_gen = generator
+
+                    tgt_0 = tgt[1:]  # to compute language model pred_prob
+                    tgt_in = tgt[:-1]  # the actual input of decoder
+                    tgt_in = tgt_in[:, :, 0].transpose(0, 1)  # (batch_size, tgt_len)
+                    pad_idx = 1
+                    eos_idx = 3
+                    tgt_pad_mask = tgt_in.data.eq(pad_idx)  # (batch_size, tgt_len)
+                    tgt_eos_mask = tgt_in.data.eq(eos_idx)
+                    mask = torch.gt(tgt_pad_mask + tgt_eos_mask, 0)
+
+                    # lm preds
+                    if self.train_lm:
+                        lm_preds = loss_gen(lm_outputs)
+                    else:  # not training lm model, so need detach
+                        lm_outs = lm_outputs.detach()
+                        lm_preds = loss_gen(lm_outs)  # （tgt_len, batch_size, vocab_size)
+                        lm_preds = lm_preds.detach()
+                    lm_preds = torch.gather(lm_preds, 2, tgt_0.long())  # (tgt_len, batch_size, 1)
+                    lm_preds = lm_preds.squeeze(2).transpose(0, 1).contiguous()  # batch_size, len
+                    lm_preds = torch.exp(lm_preds)
+
+                    # nmt preds
+                    nmt_preds = generator(outputs)  # （tgt_len, batch_size, vocab_size)
+                    nmt_preds = torch.gather(nmt_preds, 2, tgt_0.long())  # (tgt_len, batch_size, 1)
+                    nmt_preds = nmt_preds.squeeze(2).transpose(0, 1).contiguous()
+                    nmt_preds = torch.exp(nmt_preds)
+
+                    if self.add_nmt_lm_loss:
+                        if self.add_nmt_lm_loss_fn == 'linear':  # linear-linear
+                            nmt_lm = (1 - nmt_preds).mul(1 - nmt_preds + lm_preds) / 2.
+                            # (1 - nmt) * (1 - nmt+lm)/2 , less is better
+                        elif self.add_nmt_lm_loss_fn == 'x3':  # cube
+                            nmt_lm = (1 - nmt_preds).mul(1 - (nmt_preds - lm_preds) ** 3) / 2
+                            # (1-nmt)* (1-delta^3)/2
+                        elif self.add_nmt_lm_loss_fn == 'x5':  # quintic
+                            nmt_lm = (1 - nmt_preds).mul(1 - (nmt_preds - lm_preds) ** 5) / 2
+                            # (1-nmt)* (1-delta^5)/2
+                        elif self.add_nmt_lm_loss_fn == 'sigmoid_5':
+                            k = 1. / 5.
+                            nmt_lm = (1 - nmt_preds).mul(1. / (1 + torch.exp((nmt_preds - lm_preds) / k)))
+                            # (1-nmt)* (1 + exp(delta/k))^(-1)
+                        elif self.add_nmt_lm_loss_fn == 'sigmoid_10':
+                            k = 1. / 10.
+                            nmt_lm = (1 - nmt_preds).mul(1. / (1 + torch.exp((nmt_preds - lm_preds) / k)))
+                        elif self.add_nmt_lm_loss_fn == 'log_10':
+                            # y5 = np.log((0.5-x/2 + 1e-8)/(0.5+x/2 + 1e-8)) / k + 0.5
+                            k = 10.
+                            nmt_lm = (1 - nmt_preds).mul(torch.log((0.5 - nmt_preds / 2 + lm_preds / 2. + 1e-8) / (
+                                    0.5 + nmt_preds / 2 - lm_preds / 2. + 1e-8)) / k + 0.5)
+                        elif self.add_nmt_lm_loss_fn == 'log_5':
+                            k = 5.
+                            nmt_lm = (1 - nmt_preds).mul(torch.log((0.5 - nmt_preds / 2 + lm_preds / 2. + 1e-8) / (
+                                    0.5 + nmt_preds / 2 - lm_preds / 2. + 1e-8)) / k + 0.5)
+                        elif self.add_nmt_lm_loss_fn == 'log_20':
+                            k = 20.
+                            nmt_lm = (1 - nmt_preds).mul(torch.log((0.5 - nmt_preds / 2 + lm_preds / 2. + 1e-8) / (
+                                    0.5 + nmt_preds / 2 - lm_preds / 2. + 1e-8)) / k + 0.5)
+
+                        if nmt_lm.shape[1] > 2:
+                            if self.weight_sentence:
+                                # loss = f(delta) (ce + lambda*(1-p(NMT))g(delta))  (sentence level)
+                                # compute delta_percent in each sentence
+                                tgt_len = torch.ones(tgt_in.size())
+                                tgt_len = tgt_len.to(tgt_in.device)
+                                tgt_len = tgt_len.masked_fill(mask, 0)  # [batch_size, tgt_len]
+                                tgt_len = tgt_len.sum(1) - 1  # [batch_size], drop <BOS>
+                                tgt_len = tgt_len.detach()
+
+                                delta_count = nmt_preds - lm_preds  # [batch_size, tgt_len]
+                                # print('tgt_in sentence: \n ', tgt_in[:2,:])
+                                # print('tgt lence: ', tgt_len[:2])
+                                # print('delta in sentence: \n', delta_count[:2,:])
+                                delta_count = torch.where(delta_count < 0, torch.tensor(1., device=tgt_in.device),
+                                                          torch.tensor(0., device=tgt_in.device))
+                                delta_count = delta_count.sum(1)
+                                delta_count = delta_count.detach()
+
+                                delta_percent = delta_count / tgt_len  # [batch_size]
+                                # print('delta percent: ', delta_percent[:2])
+                                delta_weight = torch.where(delta_percent > self.weight_sentence_thresh,
+                                                           torch.tensor(0., device=tgt_in.device),
+                                                           torch.tensor(1., device=tgt_in.device))
+                                # [batch_size]
+
+                                # print('nmt_lm shape: ', nmt_lm.shape)
+                                # print('delta_weight shape: ', delta_weight.shape)
+
+                                # nmt_lm:[batch_size, tgt_len]
+                                loss_add = self.lambda_add_loss * (
+                                    delta_weight.mul(nmt_lm.masked_fill(mask, 0).sum(1)).sum())
+                            else:
+                                mask[:, :2] = True
+                                # ce + lambda*(1-p(NMT))g(delta)   (token level)
+                                loss_add = self.lambda_add_loss * nmt_lm[~mask].sum()
+
+                            loss_add.div(float(normalization)).backward(retain_graph=True)
+                    else:  # hard margin loss, if delta > threshold, loss = 0
+                        nmt_lm = self.nmt_lm_loss - (nmt_preds - lm_preds)  # batch, len
+                        if nmt_lm.shape[1] > 2:
+                            nmt_lm[nmt_lm < 0] = 0.
+                            mask[:, :2] = True  # don't account y1, y2
+                            loss_add = self.lambda_add_loss * nmt_lm[~mask].sum()
+                            loss_add.div(float(normalization)).backward(retain_graph=True)
+                    print('loss add: ', loss_add.div(float(normalization)))
 
                 # 3. Compute loss.
                 try:
@@ -437,7 +575,23 @@ class Trainer(object):
                         trunc_start=j,
                         trunc_size=trunc_size)
 
+                    lm_loss = None
+                    if lm_outputs is not None and train_lm:
+                        lm_loss, _ = self.train_loss(
+                            batch,
+                            lm_outputs,
+                            attns,
+                            normalization=normalization,
+                            shard_size=self.shard_size,
+                            trunc_start=j,
+                            trunc_size=trunc_size,
+                            lm_output=True,
+                            lm_lambda=self.lambda_lm)
+
                     if loss is not None:
+                        if lm_loss is not None:
+                            loss += lm_loss
+                            print('lm loss:', lm_loss)
                         self.optim.backward(loss)
 
                     total_stats.update(batch_stats)
@@ -527,11 +681,4 @@ class Trainer(object):
                 learning_rate, step, train_stats=train_stats,
                 valid_stats=valid_stats)
 
-    def map_embedding(self, embeddings):
 
-        assert isinstance(embeddings, tuple)
-
-        row_embeddings = self.table_embedding_row_linear(embeddings[0].reshape(1, 3 * 768)).squeeze()
-        col_embeddings = self.table_embedding_col_linear(embeddings[1].reshape(1, 3 * 768)).squeeze()
-
-        return row_embeddings, col_embeddings
