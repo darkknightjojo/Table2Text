@@ -12,7 +12,7 @@ from core.modules.sparse_losses import SparsemaxLoss
 from core.modules.sparse_activations import LogSparsemax
 
 
-def build_loss_compute(model, tgt_field, opt, train=True):
+def build_loss_compute(model, tgt_field, opt, train=True, lm=False):
     """
     Returns a LossCompute subclass which wraps around an nn.Module subclass
     (such as nn.NLLLoss) which defines the loss criterion. The LossCompute
@@ -61,6 +61,17 @@ def build_loss_compute(model, tgt_field, opt, train=True):
             lambda_align=opt.lambda_align)
     compute.to(device)
 
+    # 语言模型的训练损失
+    if opt.train_lm and lm:
+        lm_criterion = LabelSmoothingLoss(
+            opt.label_smoothing, len(tgt_field.vocab), ignore_index=padding_idx
+        )
+        lm_loss_gen = model.lm_generator
+        compute = NMTLossCompute(
+            lm_criterion, lm_loss_gen, lambda_coverage=opt.lambda_coverage,
+            lambda_align=opt.lambda_align)
+        compute.to(device)
+        return compute
     return compute
 
 
@@ -126,7 +137,12 @@ class LossComputeBase(nn.Module):
                  normalization=1.0,
                  shard_size=0,
                  trunc_start=0,
-                 trunc_size=None):
+                 trunc_size=None,
+                 lm_output=False,
+                 lm_lambda=1e-2,
+                 loss_add=None,
+                 delta_weight=None,
+                 ):
         """Compute the forward loss, possibly in shards in which case this
         method also runs the backward pass and returns ``None`` as the loss
         value.
@@ -160,10 +176,16 @@ class LossComputeBase(nn.Module):
         shard_state = self._make_shard_state(batch, output, trunc_range, attns)
         if shard_size == 0:
             loss, stats = self._compute_loss(batch, **shard_state)
+            if lm_output: loss = lm_lambda * loss
             return loss / float(normalization), stats
         batch_stats = core.utils.Statistics()
-        for shard in shards(shard_state, shard_size):
+        for shard in shards(shard_state, shard_size):  # shard size = 32 (normally)
             loss, stats = self._compute_loss(batch, **shard)
+            if lm_output:  # if is computing lm loss
+                loss = lm_lambda * loss
+            print('loss:', loss.div(float(normalization)))
+            # if loss_add is not None:
+            #     loss += loss_add
             loss.div(float(normalization)).backward()
             batch_stats.update(stats)
         return None, batch_stats

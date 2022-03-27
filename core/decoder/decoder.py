@@ -220,6 +220,7 @@ class RNNDecoderBase(DecoderBase):
               ``(tgt_len, batch, src_len)``.
         """
 
+        global lm_outs
         outs = self._run_forward_pass(
             tgt, memory_bank, memory_lengths=memory_lengths, **kwargs)
         if len(outs) == 3:
@@ -247,7 +248,10 @@ class RNNDecoderBase(DecoderBase):
             for k in attns:
                 if type(attns[k]) == list:
                     attns[k] = torch.stack(attns[k])
-        return dec_outs, attns
+        if len(outs) == 3:
+            return dec_outs, attns
+        else:
+            return dec_outs, attns, lm_outs
 
     def update_dropout(self, dropout):
         self.dropout.p = dropout

@@ -22,8 +22,8 @@ python3 main.py --preprocess --config cfg/preprocess.cfg --overwrite
 ```
 ## 训练：
 ```
-python3 main.py --preprocess --config preprocess.cfg --overwrite
-python3 main.py --train --config train_switch.cfg
+python3 main.py --preprocess --config cfg/preprocess.cfg --overwrite
+python3 main.py --train --config cfg/train_switch.cfg
 ```
 ## 测试：
 ```

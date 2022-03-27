@@ -40,6 +40,7 @@ def build_trainer(opt, device_id, model, fields, optim, model_saver=None):
 
     tgt_field = dict(fields)["tgt"].base_field
     train_loss = core.utils.loss.build_loss_compute(model, tgt_field, opt)
+    lm_train_loss = core.utils.loss.build_loss_compute(model, tgt_field, opt, lm=True)
     valid_loss = core.utils.loss.build_loss_compute(
         model, tgt_field, opt, train=False)
 
@@ -82,7 +83,17 @@ def build_trainer(opt, device_id, model, fields, optim, model_saver=None):
                    dropout=dropout,
                    dropout_steps=dropout_steps,
                    tabbie_embeddings=tabbie_embeddings,
-                   weights_file=weights_file)
+                   weights_file=weights_file,
+                   lambda_lm=opt.lambda_lm,
+                   train_lm=opt.train_lm,
+                   nmt_lm_loss=opt.nmt_lm_loss,
+                   add_nmt_lm_loss=opt.add_nmt_lm_loss,
+                   add_nmt_lm_loss_fn=opt.add_nmt_lm_loss_fn,
+                   lambda_add_loss=opt.lambda_add_loss,
+                   fixed_lm=opt.fixed_lm,
+                   report_lm=opt.report_lm,
+                   lm_train_loss=lm_train_loss
+                   )
 
 
 class Trainer(object):
@@ -126,8 +137,14 @@ class Trainer(object):
                  add_nmt_lm_loss_fn=None,
                  lambda_add_loss=1.0,
                  tabbie_embeddings=None,
-                 weights_file=None):
+                 weights_file=None,
+                 lambda_lm=1e-2,
+                 report_lm=False,
+                 lm_train_loss=None
+                 ):
         # Basic attributes.
+        self.report_lm = report_lm
+        self.lambda_lm = lambda_lm
         self.lambda_add_loss = lambda_add_loss
         self.add_nmt_lm_loss_fn = add_nmt_lm_loss_fn
         self.train_lm = train_lm
@@ -159,6 +176,7 @@ class Trainer(object):
         self.fixed_lm = fixed_lm
         self.loss_gen = None
         self.lm_embeddings = None
+        self.lm_train_loss = lm_train_loss
 
         for i in range(len(self.accum_count_l)):
             assert self.accum_count_l[i] > 0
@@ -468,10 +486,10 @@ class Trainer(object):
                 loss_add = None
                 delta_weight = None
                 if (self.nmt_lm_loss != -1.0 or self.add_nmt_lm_loss) and lm_outputs is not None:
-                    generator = self.model.generator[0] if isinstance(self.model.generator[-1],
-                                                                      LogSparsemax) else self.model.generator
                     # generator is nmt's generator, is changing during training
                     if loss_gen is None:  # not fixed lm model
+                        generator = self.model.lm_generator[0] if isinstance(self.model.lm_generator[-1],
+                                                                                        LogSparsemax) else self.model.lm_generator
                         loss_gen = generator
 
                     tgt_0 = tgt[1:]  # to compute language model pred_prob
@@ -532,41 +550,9 @@ class Trainer(object):
                                     0.5 + nmt_preds / 2 - lm_preds / 2. + 1e-8)) / k + 0.5)
 
                         if nmt_lm.shape[1] > 2:
-                            if self.weight_sentence:
-                                # loss = f(delta) (ce + lambda*(1-p(NMT))g(delta))  (sentence level)
-                                # compute delta_percent in each sentence
-                                tgt_len = torch.ones(tgt_in.size())
-                                tgt_len = tgt_len.to(tgt_in.device)
-                                tgt_len = tgt_len.masked_fill(mask, 0)  # [batch_size, tgt_len]
-                                tgt_len = tgt_len.sum(1) - 1  # [batch_size], drop <BOS>
-                                tgt_len = tgt_len.detach()
-
-                                delta_count = nmt_preds - lm_preds  # [batch_size, tgt_len]
-                                # print('tgt_in sentence: \n ', tgt_in[:2,:])
-                                # print('tgt lence: ', tgt_len[:2])
-                                # print('delta in sentence: \n', delta_count[:2,:])
-                                delta_count = torch.where(delta_count < 0, torch.tensor(1., device=tgt_in.device),
-                                                          torch.tensor(0., device=tgt_in.device))
-                                delta_count = delta_count.sum(1)
-                                delta_count = delta_count.detach()
-
-                                delta_percent = delta_count / tgt_len  # [batch_size]
-                                # print('delta percent: ', delta_percent[:2])
-                                delta_weight = torch.where(delta_percent > self.weight_sentence_thresh,
-                                                           torch.tensor(0., device=tgt_in.device),
-                                                           torch.tensor(1., device=tgt_in.device))
-                                # [batch_size]
-
-                                # print('nmt_lm shape: ', nmt_lm.shape)
-                                # print('delta_weight shape: ', delta_weight.shape)
-
-                                # nmt_lm:[batch_size, tgt_len]
-                                loss_add = self.lambda_add_loss * (
-                                    delta_weight.mul(nmt_lm.masked_fill(mask, 0).sum(1)).sum())
-                            else:
-                                mask[:, :2] = True
-                                # ce + lambda*(1-p(NMT))g(delta)   (token level)
-                                loss_add = self.lambda_add_loss * nmt_lm[~mask].sum()
+                            mask[:, :2] = True
+                            # ce + lambda*(1-p(NMT))g(delta)   (token level)
+                            loss_add = self.lambda_add_loss * nmt_lm[~mask].sum()
 
                             loss_add.div(float(normalization)).backward(retain_graph=True)
                     else:  # hard margin loss, if delta > threshold, loss = 0
@@ -587,11 +573,12 @@ class Trainer(object):
                         normalization=normalization,
                         shard_size=self.shard_size,
                         trunc_start=j,
-                        trunc_size=trunc_size)
+                        trunc_size=trunc_size
+                    )
 
                     lm_loss = None
                     if lm_outputs is not None and train_lm:
-                        lm_loss, _ = self.train_loss(
+                        lm_loss, _ = self.lm_train_loss(
                             batch,
                             lm_outputs,
                             attns,
@@ -603,9 +590,10 @@ class Trainer(object):
                             lm_lambda=self.lambda_lm)
 
                     if loss is not None:
+                        # print('nmt loss:', loss)
                         if lm_loss is not None:
                             loss += lm_loss
-                            print('lm loss:', lm_loss)
+                            # print('lm loss:', lm_loss)
                         self.optim.backward(loss)
 
                     total_stats.update(batch_stats)

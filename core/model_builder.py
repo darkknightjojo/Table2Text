@@ -212,6 +212,23 @@ def build_base_model(model_opt, fields, gpu, checkpoint=None, gpu_id=None):
         if model_opt.share_decoder_embeddings:
             generator.linear.weight = decoder.embeddings.word_lut.weight
 
+    # 为语言模型建立生成器
+    model.lm_generator = None
+    if model_opt.train_lm:
+        if model_opt.generator_function == "sparsemax":
+            gen_func = core.modules.sparse_activations.LogSparsemax(dim=-1)
+        else:
+            gen_func = nn.LogSoftmax(dim=-1)
+        lm_generator = nn.Sequential(
+            nn.Linear(model_opt.dec_rnn_size,
+                      len(fields["tgt"].base_field.vocab)),
+            Cast(torch.float32),
+            gen_func
+        )
+        if model_opt.share_decoder_embeddings:
+            lm_generator[0].weight = decoder.embeddings.word_lut.weight
+        model.lm_generator = lm_generator
+
     # Load the model states from checkpoint or initialize them.
     if checkpoint is not None:
         # This preserves backward-compat for models using customed layernorm

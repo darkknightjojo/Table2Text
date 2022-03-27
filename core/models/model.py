@@ -69,11 +69,11 @@ class NMTModel(nn.Module):
 
         if bptt is False:
             self.decoder.init_state(src, memory_bank, enc_state, **dec_kwargs)
-        dec_out, attns = self.decoder(dec_in, memory_bank,
+
+        return self.decoder(dec_in, memory_bank,
                                       memory_lengths=lengths,
                                       with_align=with_align,
                                       **dec_kwargs)
-        return dec_out, attns
 
     def update_dropout(self, dropout):
         self.encoder.update_dropout(dropout)
