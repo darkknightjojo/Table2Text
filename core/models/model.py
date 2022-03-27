@@ -55,7 +55,7 @@ class NMTModel(nn.Module):
 
         # 使用线性层将table_embeddings 映射到 768
         new_table_embeddings = []
-        for table_embedding in table_embeddings:
+        for table_embedding in table_embeddings.pop('embeddings'):
             e = self.map_embedding(table_embedding)
             new_table_embeddings.append(e)
         dec_kwargs["embeddings"] = new_table_embeddings
