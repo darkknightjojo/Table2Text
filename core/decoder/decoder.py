@@ -220,8 +220,12 @@ class RNNDecoderBase(DecoderBase):
               ``(tgt_len, batch, src_len)``.
         """
 
-        dec_state, dec_outs, attns = self._run_forward_pass(
+        outs = self._run_forward_pass(
             tgt, memory_bank, memory_lengths=memory_lengths, **kwargs)
+        if len(outs) == 3:
+            dec_state, dec_outs, attns = outs
+        else:
+            dec_state, dec_outs, attns, lm_outs = outs
 
         # Update the state with the result.
         if not isinstance(dec_state, tuple):

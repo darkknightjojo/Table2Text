@@ -73,7 +73,7 @@ def model_opts(parser):
               help="Type of encoder layer to use. Options are "
                    "[rnn|brnn|mean|transformer|cnn].")
     group.add('--decoder_type', '-decoder_type', type=str, default='rnn',
-              choices=['rnn', 'transformer', 'cnn', 'brnn', 'pbrnn'],
+              choices=['rnn', 'transformer', 'cnn', 'brnn', 'pbrnn', 'mblm'],
               help="Type of decoder layer to use.  Options are "
                    "[rnn|transformer|cnn|mbrnn|mblm].")
     group.add('--bidirectional_encoder', '-bidirectional_encoder',

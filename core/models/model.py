@@ -55,10 +55,13 @@ class NMTModel(nn.Module):
 
         # 使用线性层将table_embeddings 映射到 768
         new_table_embeddings = []
-        for table_embedding in table_embeddings.pop('embeddings'):
-            e = self.map_embedding(table_embedding)
-            new_table_embeddings.append(e)
-        dec_kwargs["embeddings"] = new_table_embeddings
+        table_embeddings = table_embeddings.pop('embeddings', None)
+        if table_embeddings is not None:
+            for table_embedding in table_embeddings:
+                e = self.map_embedding(table_embedding)
+                new_table_embeddings.append(e)
+        if len(new_table_embeddings) > 0:
+            dec_kwargs["embeddings"] = new_table_embeddings
 
         # enc_state = layer_num * batch_size * hidden_size 保存了每一个时间步的hidden和cell
         # memory_bank = src_length * batch_size * hidden_size 最后一层的输出

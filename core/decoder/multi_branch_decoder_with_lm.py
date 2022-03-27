@@ -1,6 +1,7 @@
 import torch
 from torch import nn
 
+from core import aeq
 from core.decoder.decoder import RNNDecoderBase
 from core.models.stacked_rnn import StackedLSTM, StackedGRU
 from core.modules import MultiHeadedAttention, AverageAttention, context_gate_factory, GlobalAttention
@@ -10,7 +11,7 @@ from core.modules.position_ffn import PositionwiseFeedForward
 class MultiBranchWithLMDecoder(RNNDecoderBase):
     def __init__(self, rnn_type, bidirectional_encoder, num_layers,
                  hidden_size, nb_branches,
-                 train_lm, model_size, heads, d_ff, self_attn_type,max_relative_positions, aan_useffn, nmt_lm_loss, add_nmt_lm_loss,
+                 train_lm, heads, d_ff, self_attn_type,max_relative_positions, aan_useffn, nmt_lm_loss, add_nmt_lm_loss,
                  attention_dropout,
                  attn_type="general", attn_func="softmax",
                  coverage_attn=False, context_gate=None,
@@ -76,7 +77,7 @@ class MultiBranchWithLMDecoder(RNNDecoderBase):
 
         # 语言模型
         self.lm_layers = nn.ModuleList(
-            [Transformer_lm_Layer(model_size, heads, d_ff, dropout,
+            [Transformer_lm_Layer(hidden_size, heads, d_ff, dropout,
                                   attention_dropout, self_attn_type=self_attn_type,
                                   max_relative_positions=max_relative_positions,
                                   aan_useffn=aan_useffn)
@@ -84,6 +85,8 @@ class MultiBranchWithLMDecoder(RNNDecoderBase):
 
         self.nmt_lm_loss = nmt_lm_loss
         self.add_nmt_lm_loss = add_nmt_lm_loss
+        self.train_lm = train_lm
+        self.layer_norm = nn.LayerNorm(hidden_size, eps=1e-6)
 
     @classmethod
     def from_opt(cls, opt, embeddings):
@@ -103,9 +106,19 @@ class MultiBranchWithLMDecoder(RNNDecoderBase):
             branch_dropout=opt.branch_dropout,
             embeddings=embeddings,
             reuse_copy_attn=opt.reuse_copy_attn,
-            copy_attn_type=opt.copy_attn_type)
+            copy_attn_type=opt.copy_attn_type,
+            train_lm=opt.train_lm,
+            heads=opt.heads,
+            d_ff=opt.transformer_ff,
+            self_attn_type=opt.self_attn_type,
+            max_relative_positions=opt.max_relative_positions,
+            aan_useffn=opt.aan_useffn,
+            nmt_lm_loss=opt.nmt_lm_loss,
+            add_nmt_lm_loss=opt.add_nmt_lm_loss,
+            attention_dropout=opt.attention_dropout[0] if type(opt.attention_dropout) is list else opt.dropout,
+        )
 
-    def init_state(self, src, memory_bank, encoder_final):
+    def init_state(self, src, memory_bank, encoder_final, **kwargs):
         """
         This is a bit tricky: states is either a tensor or tuple of tensors.
         Furthermore, OpenNMT needs them for stuff, especially during translation.
@@ -271,6 +284,7 @@ class MultiBranchWithLMDecoder(RNNDecoderBase):
         self.dropout.p = dropout
         self.rnn.dropout.p = dropout
         self.embeddings.update_dropout(dropout)
+
 
 class Transformer_lm_Layer(nn.Module):
     """

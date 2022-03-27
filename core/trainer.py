@@ -65,6 +65,7 @@ def build_trainer(opt, device_id, model, fields, optim, model_saver=None):
         if opt.early_stopping > 0 else None
 
     tabbie_embeddings = opt.tabbie_embeddings if opt.tabbie_embeddings else None
+    weights_file = opt.weights_file if opt.weights_file else None
 
     report_manager = core.utils.build_report_manager(opt, gpu_rank)
     return Trainer(model, train_loss, valid_loss, optim, trunc_size,
@@ -80,7 +81,8 @@ def build_trainer(opt, device_id, model, fields, optim, model_saver=None):
                    earlystopper=earlystopper,
                    dropout=dropout,
                    dropout_steps=dropout_steps,
-                   tabbie_embeddings=tabbie_embeddings)
+                   tabbie_embeddings=tabbie_embeddings,
+                   weights_file=weights_file)
 
 
 class Trainer(object):
@@ -123,7 +125,8 @@ class Trainer(object):
                  train_lm=False,
                  add_nmt_lm_loss_fn=None,
                  lambda_add_loss=1.0,
-                 tabbie_embeddings=None):
+                 tabbie_embeddings=None,
+                 weights_file=None):
         # Basic attributes.
         self.lambda_add_loss = lambda_add_loss
         self.add_nmt_lm_loss_fn = add_nmt_lm_loss_fn
@@ -182,7 +185,12 @@ class Trainer(object):
             self.table_embeddings_count = len(self.table_embeddings)
         else:
             self.table_embeddings = None
+            # Load weights in case of multi-branches rnn training
 
+        if weights_file:
+            self.decoder_rnn_weights = self.load_weights_file(weights_file)
+        else:
+            self.decoder_rnn_weights = None
     @staticmethod
     def load_weights_file(path):
         with open(path, mode="r", encoding="utf8") as f:
@@ -419,6 +427,8 @@ class Trainer(object):
                 if self.accum_count == 1:
                     self.optim.zero_grad()
 
+                # 加载embedding或者权重文件
+                kwargs = dict()
                 if self.table_embeddings:
                     embeddings = []
                     for b in range(batch.batch_size):
@@ -437,9 +447,13 @@ class Trainer(object):
                             self.table_embeddings_rank = quotient
                             embeddings.append(self.table_embeddings[remainder])
 
-                    kwargs = {'table_embeddings': embeddings}
-                else:
-                    kwargs = dict()
+                    kwargs['table_embeddings'] = embeddings
+
+                if self.decoder_rnn_weights:
+                    kwargs['dec_weights'] = pad_sequence([
+                        torch.Tensor(self.decoder_rnn_weights[batch.indices[b].item()])
+                        for b in range(batch.batch_size)
+                    ], batch_first=False).to(self._dev)
 
                 out = self.model(src, tgt, src_lengths, bptt=bptt, with_align=self.with_align, **kwargs)
                 if len(out) == 3:
