@@ -216,23 +216,25 @@ class MultiBranchWithLMDecoder(RNNDecoderBase):
             # rnn_output, dec_state = self.rnns[0](decoder_input, dec_state)
 
             new_states = list()
+            rnn_output = None
             for jdx, (rnn, dec_state) in enumerate(zip(self.rnns, dec_states)):
                 tmp_output, tmp_state = rnn(decoder_input, dec_state)
                 new_states.append(tmp_state)
 
                 # randomize weights with self.branch_dropout probability
-                w = weights[idx, :, jdx:jdx + 1]
-                if torch.rand(1) < self.branch_dropout:
-                    w = torch.rand(w.shape).mul(5).softmax(-1).to(weights.device)
+                if idx < weights.shape[0] and jdx < weights.shape[2]:
+                    w = weights[idx, :, jdx:jdx + 1]
+                    if torch.rand(1) < self.branch_dropout:
+                        w = torch.rand(w.shape).mul(5).softmax(-1).to(weights.device)
 
-                if jdx == 0:
-                    rnn_output = w * tmp_output
-                else:
-                    rnn_output += w * tmp_output
+                    if jdx == 0:
+                        rnn_output = w * tmp_output
+                    else:
+                        rnn_output += w * tmp_output
 
             dec_states = new_states
 
-            if self.attentional:
+            if self.attentional and rnn_output is not None:
                 decoder_output, p_attn = self.attn(
                     rnn_output,
                     memory_bank.transpose(0, 1),
