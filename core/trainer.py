@@ -16,6 +16,7 @@ import torch
 import traceback
 
 from core.metrics import RLLossCompute
+from core.modules.copy_generator import collapse_copy_scores
 from core.modules.sparse_activations import LogSparsemax
 from core.utils.misc import get_model_device
 from core.utils.logging import logger
@@ -92,7 +93,8 @@ def build_trainer(opt, device_id, model, fields, optim, model_saver=None):
                    lambda_add_loss=opt.lambda_add_loss,
                    fixed_lm=opt.fixed_lm,
                    report_lm=opt.report_lm,
-                   lm_train_loss=lm_train_loss
+                   lm_train_loss=lm_train_loss,
+                   tgt_vocab=tgt_field.vocab
                    )
 
 
@@ -140,9 +142,11 @@ class Trainer(object):
                  weights_file=None,
                  lambda_lm=1e-2,
                  report_lm=False,
-                 lm_train_loss=None
+                 lm_train_loss=None,
+                 tgt_vocab=None
                  ):
         # Basic attributes.
+        self.tgt_vocab = tgt_vocab
         self.report_lm = report_lm
         self.lambda_lm = lambda_lm
         self.lambda_add_loss = lambda_add_loss
@@ -209,6 +213,7 @@ class Trainer(object):
             self.decoder_rnn_weights = self.load_weights_file(weights_file)
         else:
             self.decoder_rnn_weights = None
+
     @staticmethod
     def load_weights_file(path):
         with open(path, mode="r", encoding="utf8") as f:
@@ -486,10 +491,9 @@ class Trainer(object):
                 loss_add = None
                 delta_weight = None
                 if (self.nmt_lm_loss != -1.0 or self.add_nmt_lm_loss) and lm_outputs is not None:
-                    # generator is nmt's generator, is changing during training
                     if loss_gen is None:  # not fixed lm model
                         generator = self.model.lm_generator[0] if isinstance(self.model.lm_generator[-1],
-                                                                                        LogSparsemax) else self.model.lm_generator
+                                                                             LogSparsemax) else self.model.lm_generator
                         loss_gen = generator
 
                     tgt_0 = tgt[1:]  # to compute language model pred_prob
@@ -513,10 +517,20 @@ class Trainer(object):
                     lm_preds = torch.exp(lm_preds)
 
                     # nmt preds
-                    nmt_preds = generator(outputs)  # （tgt_len, batch_size, vocab_size)
-                    nmt_preds = torch.gather(nmt_preds, 2, tgt_0.long())  # (tgt_len, batch_size, 1)
-                    nmt_preds = nmt_preds.squeeze(2).transpose(0, 1).contiguous()
-                    nmt_preds = torch.exp(nmt_preds)
+                    scores = self.model.generator(outputs.view(-1, outputs.size(2)),
+                                                     attns["copy"].view(-1, attns["copy"].size(2)),
+                                                     batch.src_map)
+                    scores = scores.view(-1, batch.batch_size, scores.size(-1))
+                    scores = torch.gather(scores, 2, tgt_0.long())
+                    scores = scores.squeeze(2).transpose(0, 1).contiguous()
+                    scores = torch.exp(scores)
+                    nmt_preds = scores
+
+                    # nmt_preds = generator(outputs)
+                    # nmt_preds = torch.gather(nmt_preds, 2, tgt_0.long())  # (tgt_len, batch_size, 1)
+                    # nmt_preds = nmt_preds.squeeze(2).transpose(0, 1).contiguous()
+                    # nmt_preds = torch.exp(nmt_preds)
+
 
                     if self.add_nmt_lm_loss:
                         if self.add_nmt_lm_loss_fn == 'linear':  # linear-linear
@@ -682,5 +696,3 @@ class Trainer(object):
             return self.report_manager.report_step(
                 learning_rate, step, train_stats=train_stats,
                 valid_stats=valid_stats)
-
-

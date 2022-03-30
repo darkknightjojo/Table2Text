@@ -180,7 +180,7 @@ class MultiBranchWithLMDecoder(RNNDecoderBase):
 
         # 加入语言模型联合训练
         output = emb.transpose(0, 1).contiguous()
-        tgt_words = tgt[:, :, 0].transpose(0, 1)
+        tgt_words = tgt[:, :, 0].transpose(0, 1) # [Batch * Sequence_length]
         pad_idx = self.embeddings.word_padding_idx
         tgt_pad_mask = tgt_words.data.eq(pad_idx).unsqueeze(1)  # [B, 1, T_tgt]
         if self.training or report_lm:
