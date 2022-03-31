@@ -248,7 +248,7 @@ class MultiBranchWithLMDecoder(RNNDecoderBase):
                 decoder_output = self.context_gate(
                     decoder_input, rnn_output, decoder_output
                 )
-            decoder_output = self.dropout(decoder_output)
+            decoder_output = self.dropout(decoder_output) if decoder_output is not None else torch.rand(tgt_batch, self.hidden_size).to(weights.device)
             input_feed = decoder_output
 
             dec_outs += [decoder_output]
