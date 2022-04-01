@@ -76,17 +76,23 @@ class MultiBranchWithLMDecoder(RNNDecoderBase):
             raise ValueError("Cannot reuse copy attention with no attention.")
 
         # 语言模型
-        self.lm_layers = nn.ModuleList(
-            [Transformer_lm_Layer(hidden_size, heads, d_ff, dropout,
-                                  attention_dropout, self_attn_type=self_attn_type,
-                                  max_relative_positions=max_relative_positions,
-                                  aan_useffn=aan_useffn)
-             for i in range(num_layers)])
+        if train_lm or nmt_lm_loss > -1 or add_nmt_lm_loss:
+            self.lm_layers = nn.ModuleList(
+                [Transformer_lm_Layer(hidden_size, heads, d_ff, dropout,
+                                      attention_dropout, self_attn_type=self_attn_type,
+                                      max_relative_positions=max_relative_positions,
+                                      aan_useffn=aan_useffn)
+                 for i in range(num_layers)])
 
-        self.nmt_lm_loss = nmt_lm_loss
-        self.add_nmt_lm_loss = add_nmt_lm_loss
-        self.train_lm = train_lm
-        self.layer_norm = nn.LayerNorm(hidden_size, eps=1e-6)
+            self.nmt_lm_loss = nmt_lm_loss
+            self.add_nmt_lm_loss = add_nmt_lm_loss
+            self.train_lm = train_lm
+            self.layer_norm = nn.LayerNorm(hidden_size, eps=1e-6)
+        else:
+            self.nmt_lm_loss = -1
+            self.add_nmt_lm_loss = None
+            self.train_lm = None
+            self.layer_norm = None
 
     @classmethod
     def from_opt(cls, opt, embeddings):
@@ -148,7 +154,7 @@ class MultiBranchWithLMDecoder(RNNDecoderBase):
         else:
             return dec_states.chunk(len(self.rnns), dim=-1)
 
-    def _run_forward_pass(self, tgt, memory_bank, memory_lengths=None, step=None, lm_embeddings=None, report_lm=False, **kwargs):
+    def _run_forward_pass(self, tgt, memory_bank, memory_lengths=None, step=None, lm_embeddings=None, **kwargs):
         """
         See StdRNNDecoder._run_forward_pass() for description
         of arguments and return values.
@@ -183,9 +189,9 @@ class MultiBranchWithLMDecoder(RNNDecoderBase):
         tgt_words = tgt[:, :, 0].transpose(0, 1) # [Batch * Sequence_length]
         pad_idx = self.embeddings.word_padding_idx
         tgt_pad_mask = tgt_words.data.eq(pad_idx).unsqueeze(1)  # [B, 1, T_tgt]
-        if self.training or report_lm:
+        if self.training:
             lm_outs = None
-            if self.train_lm or self.nmt_lm_loss > -1 or self.add_nmt_lm_loss or report_lm:
+            if self.train_lm or self.nmt_lm_loss > -1 or self.add_nmt_lm_loss:
                 # train nmt and lm model togather
                 if lm_embeddings is not None:
                     # fixed lm_model, only train nmt model
@@ -270,7 +276,7 @@ class MultiBranchWithLMDecoder(RNNDecoderBase):
                 attns["copy"] = attns["std"]
 
         # 生成时不计算语言模型
-        if self.training or report_lm:
+        if self.training and lm_outs is not None:
             return self._link_states(dec_states), dec_outs, attns, lm_outs
         return self._link_states(dec_states), dec_outs, attns
 
