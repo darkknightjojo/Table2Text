@@ -173,10 +173,12 @@ class Translator(object):
             self.rnn_weights = None
 
         if tabbie_embeddings is not None:
-            print(type(self.model.decoder))
             if isinstance(self.model.decoder, PretrainBaseRNNDecoder):
                 self.tabbie_embeddings = torch.load(tabbie_embeddings)
-
+            else:
+                self.tabbie_embeddings = None
+        else:
+            self.tabbie_embeddings = None
         self.min_length = min_length
         self.ratio = ratio
         self.stepwise_penalty = stepwise_penalty
@@ -301,8 +303,10 @@ class Translator(object):
             gs = self._score_target(
                 batch, memory_bank, src_lengths, src_vocabs,
                 batch.src_map if use_src_map else None)
-            # self.model.decoder.init_state(src, memory_bank, enc_states)
-            self.model.decoder.init_state(src, memory_bank, enc_states, **kwargs)
+            if len(kwargs) > 0:
+                self.model.decoder.init_state(src, memory_bank, enc_states)
+            else:
+                self.model.decoder.init_state(src, memory_bank, enc_states, **kwargs)
         else:
             gs = [0] * batch_size
         return gs
@@ -679,6 +683,7 @@ class Translator(object):
         batch_size = batch.batch_size
 
         # (1) Run the encoder on the src.
+        kwargs = dict()
         if self.tabbie_embeddings is not None:
             embeddings = []
             try:
@@ -686,9 +691,10 @@ class Translator(object):
                     embeddings.append(self.tabbie_embeddings[batch.indices[b]])
             except IndexError:
                 print(batch)
-            kwargs = {'table_embeddings': embeddings}
+            kwargs = {'embeddings': embeddings}
         src, enc_states, memory_bank, src_lengths = self._run_encoder(batch)
-        if kwargs is not None:
+
+        if len(kwargs) > 0:
             self.model.decoder.init_state(src, memory_bank, enc_states, **kwargs)
         else:
             self.model.decoder.init_state(src, memory_bank, enc_states)

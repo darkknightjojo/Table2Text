@@ -38,7 +38,8 @@ if __name__ == "__main__":
     parser.add_argument('--small', dest='small', action='store_true')
     
     parser.add_argument('--weights', dest="weights", nargs="+", type=float)
-    
+    parser.add_argument('--tabbie_embeddings', dest='tabbie_embeddings', type=str)
+
     args = parser.parse_args()
     
     print(f"Batch translating models from experiment {args.experiment}")
@@ -96,5 +97,9 @@ if __name__ == "__main__":
         if args.weights:
             weights = ' '.join([str(w) for w in args.weights])
             cmd_args.append(f'-rnn_weights {weights}')
-        
+
+        if args.tabbie_embeddings:
+            tabbie_embeddings = args.tabbie_embeddings
+            cmd_args.append(f'-tabbie_embeddings {tabbie_embeddings}')
+
         translate(f'--config cfg/translate_pretrain.cfg {" ".join(cmd_args)}')
