@@ -231,7 +231,11 @@ class MultiBranchWithLMDecoder(RNNDecoderBase):
                         rnn_output = w * tmp_output
                     else:
                         rnn_output += w * tmp_output
-
+                else:
+                    if jdx == 0:
+                        rnn_output = tmp_output
+                    else:
+                        rnn_output += tmp_output
             dec_states = new_states
 
             if self.attentional and rnn_output is not None:

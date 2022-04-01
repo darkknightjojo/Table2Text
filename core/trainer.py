@@ -490,93 +490,98 @@ class Trainer(object):
                 # 计算语言模型损失
                 loss_add = None
                 delta_weight = None
-                if (self.nmt_lm_loss != -1.0 or self.add_nmt_lm_loss) and lm_outputs is not None:
-                    if loss_gen is None:  # not fixed lm model
-                        generator = self.model.lm_generator[0] if isinstance(self.model.lm_generator[-1],
-                                                                             LogSparsemax) else self.model.lm_generator
-                        loss_gen = generator
+                try:
+                    if (self.nmt_lm_loss != -1.0 or self.add_nmt_lm_loss) and lm_outputs is not None:
 
-                    tgt_0 = tgt[1:]  # to compute language model pred_prob
-                    tgt_in = tgt[:-1]  # the actual input of decoder
-                    tgt_in = tgt_in[:, :, 0].transpose(0, 1)  # (batch_size, tgt_len)
-                    pad_idx = 1
-                    eos_idx = 3
-                    tgt_pad_mask = tgt_in.data.eq(pad_idx)  # (batch_size, tgt_len)
-                    tgt_eos_mask = tgt_in.data.eq(eos_idx)
-                    mask = torch.gt(tgt_pad_mask + tgt_eos_mask, 0)
+                        if loss_gen is None:  # not fixed lm model
+                            generator = self.model.lm_generator[0] if isinstance(self.model.lm_generator[-1],
+                                                                                 LogSparsemax) else self.model.lm_generator
+                            loss_gen = generator
 
-                    # lm preds
-                    if self.train_lm:
-                        lm_preds = loss_gen(lm_outputs)
-                    else:  # not training lm model, so need detach
-                        lm_outs = lm_outputs.detach()
-                        lm_preds = loss_gen(lm_outs)  # （tgt_len, batch_size, vocab_size)
-                        lm_preds = lm_preds.detach()
-                    lm_preds = torch.gather(lm_preds, 2, tgt_0.long())  # (tgt_len, batch_size, 1)
-                    lm_preds = lm_preds.squeeze(2).transpose(0, 1).contiguous()  # batch_size, len
-                    lm_preds = torch.exp(lm_preds)
+                        tgt_0 = tgt[1:]  # to compute language model pred_prob
+                        tgt_in = tgt[:-1]  # the actual input of decoder
+                        tgt_in = tgt_in[:, :, 0].transpose(0, 1)  # (batch_size, tgt_len)
+                        pad_idx = 1
+                        eos_idx = 3
+                        tgt_pad_mask = tgt_in.data.eq(pad_idx)  # (batch_size, tgt_len)
+                        tgt_eos_mask = tgt_in.data.eq(eos_idx)
+                        mask = torch.gt(tgt_pad_mask + tgt_eos_mask, 0)
 
-                    # nmt preds
-                    scores = self.model.generator(outputs.view(-1, outputs.size(2)),
-                                                     attns["copy"].view(-1, attns["copy"].size(2)),
-                                                     batch.src_map)
-                    scores = scores.view(-1, batch.batch_size, scores.size(-1))
-                    scores = torch.gather(scores, 2, tgt_0.long())
-                    scores = scores.squeeze(2).transpose(0, 1).contiguous()
-                    scores = torch.exp(scores)
-                    nmt_preds = scores
+                        # lm preds
+                        if self.train_lm:
+                            lm_preds = loss_gen(lm_outputs)
+                        else:  # not training lm model, so need detach
+                            lm_outs = lm_outputs.detach()
+                            lm_preds = loss_gen(lm_outs)  # （tgt_len, batch_size, vocab_size)
+                            lm_preds = lm_preds.detach()
+                        lm_preds = torch.gather(lm_preds, 2, tgt_0.long())  # (tgt_len, batch_size, 1)
+                        lm_preds = lm_preds.squeeze(2).transpose(0, 1).contiguous()  # batch_size, len
+                        lm_preds = torch.exp(lm_preds)
 
-                    # nmt_preds = generator(outputs)
-                    # nmt_preds = torch.gather(nmt_preds, 2, tgt_0.long())  # (tgt_len, batch_size, 1)
-                    # nmt_preds = nmt_preds.squeeze(2).transpose(0, 1).contiguous()
-                    # nmt_preds = torch.exp(nmt_preds)
+                        # nmt preds
+                        scores = self.model.generator(outputs.view(-1, outputs.size(2)),
+                                                         attns["copy"].view(-1, attns["copy"].size(2)),
+                                                         batch.src_map)
+                        scores = scores.view(-1, batch.batch_size, scores.size(-1))
+                        scores = torch.gather(scores, 2, tgt_0.long())
+                        scores = scores.squeeze(2).transpose(0, 1).contiguous()
+                        scores = torch.exp(scores)
+                        nmt_preds = scores
+
+                        # nmt_preds = generator(outputs)
+                        # nmt_preds = torch.gather(nmt_preds, 2, tgt_0.long())  # (tgt_len, batch_size, 1)
+                        # nmt_preds = nmt_preds.squeeze(2).transpose(0, 1).contiguous()
+                        # nmt_preds = torch.exp(nmt_preds)
 
 
-                    if self.add_nmt_lm_loss:
-                        if self.add_nmt_lm_loss_fn == 'linear':  # linear-linear
-                            nmt_lm = (1 - nmt_preds).mul(1 - nmt_preds + lm_preds) / 2.
-                            # (1 - nmt) * (1 - nmt+lm)/2 , less is better
-                        elif self.add_nmt_lm_loss_fn == 'x3':  # cube
-                            nmt_lm = (1 - nmt_preds).mul(1 - (nmt_preds - lm_preds) ** 3) / 2
-                            # (1-nmt)* (1-delta^3)/2
-                        elif self.add_nmt_lm_loss_fn == 'x5':  # quintic
-                            nmt_lm = (1 - nmt_preds).mul(1 - (nmt_preds - lm_preds) ** 5) / 2
-                            # (1-nmt)* (1-delta^5)/2
-                        elif self.add_nmt_lm_loss_fn == 'sigmoid_5':
-                            k = 1. / 5.
-                            nmt_lm = (1 - nmt_preds).mul(1. / (1 + torch.exp((nmt_preds - lm_preds) / k)))
-                            # (1-nmt)* (1 + exp(delta/k))^(-1)
-                        elif self.add_nmt_lm_loss_fn == 'sigmoid_10':
-                            k = 1. / 10.
-                            nmt_lm = (1 - nmt_preds).mul(1. / (1 + torch.exp((nmt_preds - lm_preds) / k)))
-                        elif self.add_nmt_lm_loss_fn == 'log_10':
-                            # y5 = np.log((0.5-x/2 + 1e-8)/(0.5+x/2 + 1e-8)) / k + 0.5
-                            k = 10.
-                            nmt_lm = (1 - nmt_preds).mul(torch.log((0.5 - nmt_preds / 2 + lm_preds / 2. + 1e-8) / (
-                                    0.5 + nmt_preds / 2 - lm_preds / 2. + 1e-8)) / k + 0.5)
-                        elif self.add_nmt_lm_loss_fn == 'log_5':
-                            k = 5.
-                            nmt_lm = (1 - nmt_preds).mul(torch.log((0.5 - nmt_preds / 2 + lm_preds / 2. + 1e-8) / (
-                                    0.5 + nmt_preds / 2 - lm_preds / 2. + 1e-8)) / k + 0.5)
-                        elif self.add_nmt_lm_loss_fn == 'log_20':
-                            k = 20.
-                            nmt_lm = (1 - nmt_preds).mul(torch.log((0.5 - nmt_preds / 2 + lm_preds / 2. + 1e-8) / (
-                                    0.5 + nmt_preds / 2 - lm_preds / 2. + 1e-8)) / k + 0.5)
+                        if self.add_nmt_lm_loss:
+                            if self.add_nmt_lm_loss_fn == 'linear':  # linear-linear
+                                nmt_lm = (1 - nmt_preds).mul(1 - nmt_preds + lm_preds) / 2.
+                                # (1 - nmt) * (1 - nmt+lm)/2 , less is better
+                            elif self.add_nmt_lm_loss_fn == 'x3':  # cube
+                                nmt_lm = (1 - nmt_preds).mul(1 - (nmt_preds - lm_preds) ** 3) / 2
+                                # (1-nmt)* (1-delta^3)/2
+                            elif self.add_nmt_lm_loss_fn == 'x5':  # quintic
+                                nmt_lm = (1 - nmt_preds).mul(1 - (nmt_preds - lm_preds) ** 5) / 2
+                                # (1-nmt)* (1-delta^5)/2
+                            elif self.add_nmt_lm_loss_fn == 'sigmoid_5':
+                                k = 1. / 5.
+                                nmt_lm = (1 - nmt_preds).mul(1. / (1 + torch.exp((nmt_preds - lm_preds) / k)))
+                                # (1-nmt)* (1 + exp(delta/k))^(-1)
+                            elif self.add_nmt_lm_loss_fn == 'sigmoid_10':
+                                k = 1. / 10.
+                                nmt_lm = (1 - nmt_preds).mul(1. / (1 + torch.exp((nmt_preds - lm_preds) / k)))
+                            elif self.add_nmt_lm_loss_fn == 'log_10':
+                                # y5 = np.log((0.5-x/2 + 1e-8)/(0.5+x/2 + 1e-8)) / k + 0.5
+                                k = 10.
+                                nmt_lm = (1 - nmt_preds).mul(torch.log((0.5 - nmt_preds / 2 + lm_preds / 2. + 1e-8) / (
+                                        0.5 + nmt_preds / 2 - lm_preds / 2. + 1e-8)) / k + 0.5)
+                            elif self.add_nmt_lm_loss_fn == 'log_5':
+                                k = 5.
+                                nmt_lm = (1 - nmt_preds).mul(torch.log((0.5 - nmt_preds / 2 + lm_preds / 2. + 1e-8) / (
+                                        0.5 + nmt_preds / 2 - lm_preds / 2. + 1e-8)) / k + 0.5)
+                            elif self.add_nmt_lm_loss_fn == 'log_20':
+                                k = 20.
+                                nmt_lm = (1 - nmt_preds).mul(torch.log((0.5 - nmt_preds / 2 + lm_preds / 2. + 1e-8) / (
+                                        0.5 + nmt_preds / 2 - lm_preds / 2. + 1e-8)) / k + 0.5)
 
-                        if nmt_lm.shape[1] > 2:
-                            mask[:, :2] = True
-                            # ce + lambda*(1-p(NMT))g(delta)   (token level)
-                            loss_add = self.lambda_add_loss * nmt_lm[~mask].sum()
+                            if nmt_lm.shape[1] > 2:
+                                mask[:, :2] = True
+                                # ce + lambda*(1-p(NMT))g(delta)   (token level)
+                                loss_add = self.lambda_add_loss * nmt_lm[~mask].sum()
 
-                            loss_add.div(float(normalization)).backward(retain_graph=True)
-                    else:  # hard margin loss, if delta > threshold, loss = 0
-                        nmt_lm = self.nmt_lm_loss - (nmt_preds - lm_preds)  # batch, len
-                        if nmt_lm.shape[1] > 2:
-                            nmt_lm[nmt_lm < 0] = 0.
-                            mask[:, :2] = True  # don't account y1, y2
-                            loss_add = self.lambda_add_loss * nmt_lm[~mask].sum()
-                            loss_add.div(float(normalization)).backward(retain_graph=True)
-                    print('loss add: ', loss_add.div(float(normalization)))
+                                loss_add.div(float(normalization)).backward(retain_graph=True)
+                        else:  # hard margin loss, if delta > threshold, loss = 0
+                            nmt_lm = self.nmt_lm_loss - (nmt_preds - lm_preds)  # batch, len
+                            if nmt_lm.shape[1] > 2:
+                                nmt_lm[nmt_lm < 0] = 0.
+                                mask[:, :2] = True  # don't account y1, y2
+                                loss_add = self.lambda_add_loss * nmt_lm[~mask].sum()
+                                loss_add.div(float(normalization)).backward(retain_graph=True)
+                        # print('loss add: ', loss_add.div(float(normalization)))
+                except Exception:
+                    traceback.print_exc()
+                    print(batch.indices)
 
                 # 3. Compute loss.
                 try:
