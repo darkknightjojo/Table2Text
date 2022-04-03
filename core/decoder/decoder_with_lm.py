@@ -160,7 +160,7 @@ class MultiBranchWithLMDecoder(RNNDecoderBase):
         of arguments and return values.
         """
         weights = kwargs.pop('weights', None)
-        assert weights is not None
+        # assert weights is not None
 
         # Additional args check.
         input_feed = self.state["input_feed"].squeeze(0)
@@ -228,7 +228,7 @@ class MultiBranchWithLMDecoder(RNNDecoderBase):
                 new_states.append(tmp_state)
 
                 # randomize weights with self.branch_dropout probability
-                if idx < weights.shape[0] and jdx < weights.shape[2]:
+                if weights is not None and idx < weights.shape[0] and jdx < weights.shape[2]:
                     w = weights[idx, :, jdx:jdx + 1]
                     if torch.rand(1) < self.branch_dropout:
                         w = torch.rand(w.shape).mul(5).softmax(-1).to(weights.device)
