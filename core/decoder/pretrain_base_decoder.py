@@ -115,6 +115,7 @@ class PretrainBaseRNNDecoder(RNNDecoderBase):
                 table_embeddings = kwargs.pop('embeddings', None)
                 new_table_embeddings = []
                 if table_embeddings is not None:
+                    table_embeddings = table_embeddings.pop('embeddings', None)
                     # 使用线性层将table_embeddings 映射到 768
                     if table_embeddings is not None:
                         for table_embedding in table_embeddings:
@@ -122,6 +123,7 @@ class PretrainBaseRNNDecoder(RNNDecoderBase):
                             new_table_embeddings.append(e)
                 encoder_final = new_table_embeddings
 
+        # encoder_final的形状应当为layers * batch_size * hidden_num
         super().init_state(src, memory_bank, encoder_final)
         repeats = [1] * len(self.state['hidden'][0].shape)
         self.state['hidden'] = tuple(h.repeat(*repeats) for h in self.state['hidden'])

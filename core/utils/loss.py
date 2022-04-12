@@ -183,7 +183,7 @@ class LossComputeBase(nn.Module):
             loss, stats = self._compute_loss(batch, **shard)
             if lm_output:  # if is computing lm loss
                 loss = lm_lambda * loss
-            print('loss:', loss.div(float(normalization)))
+            # print('loss:', loss.div(float(normalization)))
             # if loss_add is not None:
             #     loss += loss_add
             loss.div(float(normalization)).backward()
