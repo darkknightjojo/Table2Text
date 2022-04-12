@@ -10,6 +10,7 @@ from core.translate.translator import build_translator
 import core.opts as opts
 from core.utils.parse import ArgumentParser
 
+import tensorflow
 
 def translate(opt):
     ArgumentParser.validate_translate_opts(opt)
