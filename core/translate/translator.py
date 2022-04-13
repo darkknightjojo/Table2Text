@@ -304,9 +304,9 @@ class Translator(object):
                 batch, memory_bank, src_lengths, src_vocabs,
                 batch.src_map if use_src_map else None)
             if len(kwargs) > 0:
-                self.model.decoder.init_state(src, memory_bank, enc_states)
-            else:
                 self.model.decoder.init_state(src, memory_bank, enc_states, **kwargs)
+            else:
+                self.model.decoder.init_state(src, memory_bank, enc_states)
         else:
             gs = [0] * batch_size
         return gs
@@ -690,7 +690,7 @@ class Translator(object):
                 for b in range(batch.batch_size):
                     embeddings.append(self.tabbie_embeddings[batch.indices[b]])
             except IndexError:
-                print(batch)
+                print("a error when load embeddings")
             kwargs = {'embeddings': embeddings}
         src, enc_states, memory_bank, src_lengths = self._run_encoder(batch)
 

@@ -174,13 +174,6 @@ def build_base_model(model_opt, fields, gpu, checkpoint=None, gpu_id=None):
 
     decoder = build_decoder(model_opt, tgt_emb, dims)
 
-    # 如果使用预训练模型做编码器
-    if model_opt.tabbie_embeddings:
-        row_linear = torch.nn.Linear(3 * 768, 768)
-        col_linear = torch.nn.Linear(3 * 768, 768)
-    else:
-        row_linear = None
-        col_linear = None
     # Build NMTModel(= encoder + decoder).
     if gpu and gpu_id is not None:
         device = torch.device("cuda", gpu_id)
@@ -188,7 +181,7 @@ def build_base_model(model_opt, fields, gpu, checkpoint=None, gpu_id=None):
         device = torch.device("cuda")
     elif not gpu:
         device = torch.device("cpu")
-    model = core.models.NMTModel(encoder, decoder, row_linear, col_linear)
+    model = core.models.NMTModel(encoder, decoder)
 
     # Build Generator.
     if not model_opt.copy_attn:
