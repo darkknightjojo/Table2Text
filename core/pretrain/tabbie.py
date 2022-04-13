@@ -71,5 +71,6 @@ def get_table_embedding(embedding_file_path, data_num, config_file, input_json, 
         table_embeddings = tabbie.run(args.batch_size, args.input_file, None, data_num, embedding_file_path, save_step)
 
     print(len(table_embeddings))
-    # torch.save(table_embeddings, embedding_file_path)
+    if len(table_embeddings) > 0:
+        torch.save(table_embeddings, embedding_file_path)
     # return re

@@ -177,6 +177,8 @@ class RNNDecoderBase(DecoderBase):
             for item in encoder_final:
                 row_embeddings.append(item[0])
                 col_embeddings.append(item[1])
+            if len(row_embeddings) == 0 or len(col_embeddings) == 0:
+                print(22)
             hidden0 = torch.stack(row_embeddings).reshape((batch_size, 768)).repeat((self.num_layers, 1, 1))
             hidden1 = torch.stack(col_embeddings).reshape((batch_size, 768)).repeat((self.num_layers, 1, 1))
             self.state["hidden"] = tuple([hidden0, hidden1])
