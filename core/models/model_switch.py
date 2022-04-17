@@ -18,7 +18,7 @@ class SwitchModel(nn.Module):
         super(SwitchModel, self).__init__()
         self.rnn1 = LSTM.from_opt(opt, src_embeddings)
         self.rnn2 = LSTM.from_opt(opt, tgt_embeddings)
-        # self.encoder = self.rnn1
+        self.encoder = self.rnn1
         self.decoder = EmptyDecoder.from_opt(opt, src_embeddings, tgt_embeddings)
 
     def forward(self, src, tgt, lengths=None, bptt=False, with_align=False, reverse=False, **kwargs):
@@ -26,6 +26,8 @@ class SwitchModel(nn.Module):
         Possible initialized with a beginning decoder state.
 
         Args:
+            dec_kwargs: 权重文件或者表格编码
+            reverse: 是否交换RNN
             src (Tensor): A source sequence passed to encoder.
                 typically for inputs this will be a padded `LongTensor`
                 of size ``(len, batch, features)``. However, may be an
@@ -46,27 +48,28 @@ class SwitchModel(nn.Module):
         """
         target = tgt[:-1]  # exclude last target from inputs
 
-        # 交换RNN
-        if reverse:
-            rnn_encoder = self.rnn2
-            rnn_decoder = self.rnn1
-        else:
-            rnn_encoder = self.rnn1
-            rnn_decoder = self.rnn2
-        # separate additionnal args for encoder/decoder
-        # enc_kwargs = {key[4:]: value for key, value in kwargs.items() if key.startswith('enc')}
-        # dec_kwargs = {key[4:]: value for key, value in kwargs.items() if key.startswith('dec')}
+        rnn_encoder = self.rnn1
+        rnn_decoder = self.rnn2
+        if self.training:
+            # 交换RNN
+            if reverse:
+                rnn_encoder = self.rnn2
+                rnn_decoder = self.rnn1
 
-        # # separate additionnal args for encoder/decoder
-        # enc_kwargs = {key[4:]: value for key, value in kwargs.items() if key.startswith('enc')}
-        # dec_kwargs = {key[4:]: value for key, value in kwargs.items() if key.startswith('dec')}
+        dec_kwargs = {"embeddings": {key[6:]: value for key, value in kwargs.items() if key.startswith('table')}}
+        # 将table_embeddings转为embeddings
 
         enc_state, memory_bank, lengths = encoder_forward(src, lengths=None, rnn=rnn_encoder)
 
-        decoder_init(self.decoder, enc_state)
+        if bptt is False:
+            if reverse:
+                self.decoder.init_state(memory_bank=memory_bank, encoder_final=enc_state)
+            else:
+                self.decoder.init_state(memory_bank=memory_bank, encoder_final=enc_state, **dec_kwargs)
 
-        dec_states, dec_out, attns = decoder_forward(self.decoder, target, memory_bank,
-                                                     lengths=lengths, rnn=rnn_decoder, reverse=reverse)
+        dec_states, dec_out, attns = self.decoder(target, memory_bank, memory_lengths=lengths,
+                                                  rnn=rnn_decoder, reverse=reverse, **dec_kwargs)
+
         return dec_out, attns
 
     def update_dropout(self, dropout):
@@ -76,10 +79,6 @@ class SwitchModel(nn.Module):
 
 def encoder_forward(src, lengths, rnn, **enc_kwargs):
     return rnn(src, lengths, **enc_kwargs)
-
-
-def decoder_init(decoder, enc_state):
-    decoder.init_state(encoder_final=enc_state)
 
 
 def decoder_forward(decoder, target, memory_bank, lengths, rnn, reverse, **dec_kwargs):

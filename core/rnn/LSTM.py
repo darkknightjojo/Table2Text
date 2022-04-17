@@ -5,8 +5,10 @@ from torch.nn.utils.rnn import pad_packed_sequence as unpack
 import torch.nn.functional as F
 from torch.nn.functional import pad
 
+
 class LSTM(nn.Module):
 
+    # 不存在双向的问题，全部是单向
     def __init__(self, rnn_type, bidirectional, num_layers, hidden_size, dropout=0.0,
                  embeddings=None, use_bridge=False):
         super(LSTM, self).__init__()
@@ -45,14 +47,13 @@ class LSTM(nn.Module):
         if not is_decoder:
             emb = self.embeddings(input)
             packed_emb = emb
-            # 填充为 len* batch_size * hidden_size+embedding
+            # 填充为 len* batch_size * (hidden_size+embedding)
             packed_emb = pad(packed_emb, (self.hidden_size * self.num_directions, 0))
             # 压缩 去除无效0
             if lengths is not None:
                 lengths_list = lengths.view(-1).tolist()
                 packed_emb = pack(packed_emb, lengths_list)
 
-            # TODO memory_bank 是什么？
             memory_bank, encoder_final = self.rnn(packed_emb)
             # 填充0 保证长度一致
             if lengths is not None:

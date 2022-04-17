@@ -162,6 +162,10 @@ def model_opts(parser):
 
     group.add('--tabbie_embeddings', '-tabbie_embeddings', type=str, default='',
               help='Path to the embeddings used in pretrain_base_decoder')
+    # switch
+    group.add('--switch', '-switch', type=bool, default=False,
+              help='Whether to use switch strategy')
+
     # Attention options
     group = parser.add_argument_group('Model- Attention')
     group.add('--global_attention', '-global_attention',
@@ -372,9 +376,6 @@ def train_opts(parser):
     """ Training and saving options """
 
     group = parser.add_argument_group('General')
-    group.add('--switch', '-switch', required=False, default=False,
-              help='Path prefix to the ".train.pt" and '
-                   '".valid.pt" file path from preprocess.py')
     group.add('--data', '-data', required=True,
               help='Path prefix to the ".train.pt" and '
                    '".valid.pt" file path from preprocess.py')
@@ -804,6 +805,7 @@ def translate_opts(parser):
     group.add('--tabbie_embeddings', '-tabbie_embeddings', type=str, default='',
                   help='Path to the embeddings used in pretrain_base_decoder')
 
+    group.add('--switch', '-switch', type=bool, default=False)
 # Copyright 2016 The Chromium Authors. All rights reserved.
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
