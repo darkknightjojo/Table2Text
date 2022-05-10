@@ -178,10 +178,7 @@ class Translator(object):
             self.rnn_weights = None
 
         if tabbie_embeddings is not None:
-            if isinstance(self.model.decoder, PretrainBaseRNNDecoder) or isinstance(self.model.decoder, EmptyDecoder):
-                self.tabbie_embeddings = torch.load(tabbie_embeddings)
-            else:
-                self.tabbie_embeddings = None
+            self.tabbie_embeddings = torch.load(tabbie_embeddings)
         else:
             self.tabbie_embeddings = None
         self.min_length = min_length
