@@ -13,20 +13,24 @@ import core.model_builder
 import core.inputters as inputters
 from core import translate
 from core.decoder import PretrainBaseRNNDecoder
+from core.decoder.empty_decoder import EmptyDecoder
 from core.translate.beam_search import BeamSearch
 from core.translate.greedy_search import GreedySearch
 from core.utils.misc import tile, set_random_seed, report_matrix
 from core.utils.alignment import extract_alignment, build_align_pharaoh
 from core.modules.copy_generator import collapse_copy_scores
 from core.decoder.structure_aware import StructureAwareDecoder
-
+from core.model_builder_switch import load_test_model as load_switch_test_model
+from core.model_builder import load_test_model
 
 def build_translator(opt, report_score=True, logger=None, out_file=None):
     if out_file is None:
         out_file = codecs.open(opt.output, 'w+', 'utf-8')
 
-    load_test_model = core.model_builder.load_test_model
-    fields, model, model_opt = load_test_model(opt)
+    if opt.switch:
+        fields, model, model_opt = load_switch_test_model(opt)
+    else:
+        fields, model, model_opt = load_test_model(opt)
 
     scorer = core.translate.GNMTGlobalScorer.from_opt(opt)
 
@@ -39,7 +43,7 @@ def build_translator(opt, report_score=True, logger=None, out_file=None):
         out_file=out_file,
         report_align=opt.report_align,
         report_score=report_score,
-        logger=logger
+        logger=logger,
     )
     return translator
 
@@ -133,7 +137,8 @@ class Translator(object):
             report_score=True,
             logger=None,
             seed=-1,
-            tabbie_embeddings=None):
+            tabbie_embeddings=None,
+            switch=False):
         self.model = model
         self.fields = fields
         tgt_field = dict(self.fields)["tgt"].base_field
@@ -173,10 +178,7 @@ class Translator(object):
             self.rnn_weights = None
 
         if tabbie_embeddings is not None:
-            if isinstance(self.model.decoder, PretrainBaseRNNDecoder):
-                self.tabbie_embeddings = torch.load(tabbie_embeddings)
-            else:
-                self.tabbie_embeddings = None
+            self.tabbie_embeddings = torch.load(tabbie_embeddings)
         else:
             self.tabbie_embeddings = None
         self.min_length = min_length
@@ -226,6 +228,8 @@ class Translator(object):
         set_random_seed(seed, self._use_cuda)
 
         assert not self.model.training
+
+        self.switch = switch
 
     @classmethod
     def from_opt(
@@ -289,7 +293,8 @@ class Translator(object):
             report_score=report_score,
             logger=logger,
             seed=opt.seed,
-            tabbie_embeddings=opt.tabbie_embeddings)
+            tabbie_embeddings=opt.tabbie_embeddings,
+            switch=opt.switch)
 
     def _log(self, msg):
         if self.logger:
@@ -622,10 +627,16 @@ class Translator(object):
         else:
             kwargs = dict()
 
-        dec_out, dec_attn = self.model.decoder(
-            decoder_in, memory_bank, memory_lengths=memory_lengths,
-            **kwargs
-        )
+        if self.switch:
+            _, dec_out, dec_attn = self.model.decoder(
+                decoder_in, memory_bank, memory_lengths=memory_lengths, rnn=self.model.rnn2,
+                **kwargs
+            )
+        else:
+            dec_out, dec_attn = self.model.decoder(
+                decoder_in, memory_bank, memory_lengths=memory_lengths,
+                **kwargs
+            )
 
         # Generator forward.
         if not self.copy_attn:

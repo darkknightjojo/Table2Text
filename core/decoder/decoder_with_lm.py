@@ -94,6 +94,13 @@ class MultiBranchWithLMDecoder(RNNDecoderBase):
             self.train_lm = None
             self.layer_norm = None
 
+        # 线性层，将tabbie的embeddings映射为768
+        self.table_embedding_relu = nn.ReLU()
+        self.table_embedding_row_fw_input = nn.Linear(3 * 768, 2 * 768)
+        self.table_embedding_row_fw_output = nn.Linear(2 * 768, 768)
+        self.table_embedding_col_fw_input = nn.Linear(3 * 768, 2 * 768)
+        self.table_embedding_col_fw_output = nn.Linear(2 * 768, 768)
+
     @classmethod
     def from_opt(cls, opt, embeddings):
         """Alternate constructor."""
@@ -134,10 +141,41 @@ class MultiBranchWithLMDecoder(RNNDecoderBase):
         Therefore we cat all hidden_states (and cell_states) on the last dim (features dim)
         We will be able to _unlink_states later when needed inside the _run_forward_pass
         """
+        if kwargs is not None:
+            if kwargs['embeddings'] is not None:
+                # 使用tabbie的输出作为rnn初始化的张量
+                # batch_size * 768
+                table_embeddings = kwargs.pop('embeddings', None)
+                new_table_embeddings = []
+                if table_embeddings is not None:
+                    if isinstance(table_embeddings, dict):
+                        table_embeddings = table_embeddings.get('embeddings', None)
+                    # 使用线性层将table_embeddings 映射到 768
+                    if table_embeddings is not None:
+                        for table_embedding in table_embeddings:
+                            e = self.map_embedding(table_embedding)
+                            new_table_embeddings.append(e)
+                encoder_final = new_table_embeddings
+
+        # encoder_final的形状应当为layers * batch_size * hidden_num
         super().init_state(src, memory_bank, encoder_final)
         repeats = [1] * len(self.state['hidden'][0].shape)
         repeats[-1] = len(self.rnns)
         self.state['hidden'] = tuple(h.repeat(*repeats) for h in self.state['hidden'])
+
+    def map_embedding(self, embeddings):
+
+        assert isinstance(embeddings, tuple)
+
+        row_embeddings_1 = self.table_embedding_row_fw_input(embeddings[0].reshape(1, 3 * 768))
+        row_embeddings_2 = self.table_embedding_relu(row_embeddings_1)
+        row_embeddings_final = self.table_embedding_row_fw_output(row_embeddings_2).squeeze()
+
+        col_embeddings_1 = self.table_embedding_col_fw_input(embeddings[1].reshape(1, 3 * 768))
+        col_embeddings_2 = self.table_embedding_relu(col_embeddings_1)
+        col_embeddings_final = self.table_embedding_col_fw_output(col_embeddings_2).squeeze()
+
+        return row_embeddings_final, col_embeddings_final
 
     def _link_states(self, dec_states):
         if isinstance(dec_states[0], tuple):

@@ -641,8 +641,8 @@ class Trainer(object):
                 if self.model.decoder.state is not None:
                     self.model.decoder.detach_state()
 
-                # if isinstance(self.model, SwitchModel):
-                #     self.model(tgt, src, lengths=src_lengths, bptt=bptt, reverse=True, with_align=self.with_align, **kwargs)
+                if isinstance(self.model, SwitchModel):
+                    self.model(tgt, src, lengths=src_lengths, bptt=bptt, reverse=True, with_align=self.with_align, **kwargs)
 
         # in case of multi step gradient accumulation,
         # update only after accum batches

@@ -1,3 +1,5 @@
+import sys
+
 import torch
 from torch import nn
 from ..modules import GlobalAttention
@@ -22,20 +24,21 @@ class EmptyDecoder(nn.Module):
             embeddings=embeddings,
             reuse_copy_attn=opt.reuse_copy_attn,
             copy_attn_type=opt.copy_attn_type,
-            src_embeddings=src_embeddings)
+            src_embeddings=src_embeddings,
+            num_layers=opt.layers)
 
-    def __init__(self, hidden_size, embeddings=None, src_embeddings=None, bidirectional_encoder=None, attn_type="general",
+    def __init__(self, hidden_size, embeddings=None, src_embeddings=None, bidirectional_encoder=None, num_layers=2,
+                 attn_type="general",
                  attn_func="softmax",
                  coverage_attn=False, copy_attn=False, reuse_copy_attn=False, copy_attn_type="general",
                  dropout=0.0, attentional=True):
 
         super(EmptyDecoder, self).__init__()
+        self.num_layers = num_layers
         self.hidden_size = hidden_size
         self.embeddings = embeddings
         self.src_embeddings = src_embeddings
         self.dropout = nn.Dropout(dropout)
-
-        self.bidirectional_encoder = bidirectional_encoder
 
         self.attentional = attentional
 
@@ -67,9 +70,32 @@ class EmptyDecoder(nn.Module):
         if self._reuse_copy_attn and not self.attentional:
             raise ValueError("Cannot reuse copy attention with no attention.")
 
-    def init_state(self, src=None, memory_bank=None, encoder_final=None):
+        # 线性层，将tabbie的embeddings映射为768
+        self.table_embedding_relu = nn.ReLU()
+        self.table_embedding_row_fw_input = nn.Linear(3 * 768, 2*768)
+        self.table_embedding_row_fw_output = nn.Linear(2*768, 768)
+        self.table_embedding_col_fw_input = nn.Linear(3 * 768, 2 * 768)
+        self.table_embedding_col_fw_output = nn.Linear(2 * 768, 768)
+
+    def init_state(self, src=None, memory_bank=None, encoder_final=None, **kwargs):
         """Initialize decoder state with last state of the encoder."""
-        assert encoder_final is not None
+        # assert encoder_final is not None
+
+        if kwargs is not None:
+            if kwargs['embeddings'] is not None:
+                # 使用tabbie的输出作为rnn初始化的张量
+                # batch_size * 768
+                table_embeddings = kwargs.pop('embeddings', None)
+                new_table_embeddings = []
+                if table_embeddings is not None:
+                    if isinstance(table_embeddings, dict):
+                        table_embeddings = table_embeddings.get('embeddings', None)
+                    # 使用线性层将table_embeddings 映射到 768
+                    if table_embeddings is not None:
+                        for table_embedding in table_embeddings:
+                            e = self.map_embedding(table_embedding)
+                            new_table_embeddings.append(e)
+                encoder_final = new_table_embeddings
 
         def _fix_enc_hidden(hidden):
             # The encoder hidden is  (layers*directions) x batch x dim.
@@ -80,17 +106,44 @@ class EmptyDecoder(nn.Module):
             return hidden
 
         if isinstance(encoder_final, tuple):  # LSTM
-            # self.state["hidden"] = tuple(_fix_enc_hidden(enc_hid) for enc_hid in encoder_final)
-            self.state["hidden"] = tuple(enc_hid for enc_hid in encoder_final)
+            self.state["hidden"] = tuple(_fix_enc_hidden(enc_hid)
+                                         for enc_hid in encoder_final)
+        elif isinstance(encoder_final, list):  # tabbie
+            batch_size = len(encoder_final)
+            row_embeddings = []
+            col_embeddings = []
+            for item in encoder_final:
+                row_embeddings.append(item[0])
+                col_embeddings.append(item[1])
+            if len(row_embeddings) == 0 or len(col_embeddings) == 0:
+                print("爷不完了！！")
+                sys.exit(-1)
+            hidden0 = torch.stack(row_embeddings).reshape((batch_size, 768)).repeat((self.num_layers, 1, 1))
+            hidden1 = torch.stack(col_embeddings).reshape((batch_size, 768)).repeat((self.num_layers, 1, 1))
+            self.state["hidden"] = tuple([hidden0, hidden1])
         else:  # GRU
-            # self.state["hidden"] = (_fix_enc_hidden(encoder_final),)
-            self.state["hidden"] = (encoder_final,)
+            self.state["hidden"] = (_fix_enc_hidden(encoder_final),)
+
         # Init the input feed.
         batch_size = self.state["hidden"][0].size(1)
         h_size = (batch_size, self.hidden_size)
         # decoder第一个输入向量的初始化
         self.state["input_feed"] = self.state["hidden"][0].data.new(*h_size).zero_().unsqueeze(0)
         self.state["coverage"] = None
+
+    def map_embedding(self, embeddings):
+
+        assert isinstance(embeddings, tuple)
+
+        row_embeddings_1 = self.table_embedding_row_fw_input(embeddings[0].reshape(1, 3 * 768))
+        row_embeddings_2 = self.table_embedding_relu(row_embeddings_1)
+        row_embeddings_final = self.table_embedding_row_fw_output(row_embeddings_2).squeeze()
+
+        col_embeddings_1 = self.table_embedding_col_fw_input(embeddings[1].reshape(1, 3 * 768))
+        col_embeddings_2 = self.table_embedding_relu(col_embeddings_1)
+        col_embeddings_final = self.table_embedding_col_fw_output(col_embeddings_2).squeeze()
+
+        return row_embeddings_final, col_embeddings_final
 
     def forward(self, target, memory_bank, memory_lengths, rnn, reverse=False, **dec_kwargs):
 
@@ -141,7 +194,6 @@ class EmptyDecoder(nn.Module):
                 attns["copy"] += [copy_attn]
             elif self._reuse_copy_attn:
                 attns["copy"] = attns["std"]
-
 
         # Update the state with the result.
         if not isinstance(dec_states, tuple):

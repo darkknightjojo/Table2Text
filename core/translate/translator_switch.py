@@ -302,7 +302,7 @@ class Translator(object):
                 batch, memory_bank, src_lengths, src_vocabs,
                 batch.src_map if use_src_map else None)
             # self.model.decoder.init_state(src, memory_bank, enc_states)
-            self.model.decoder.init_state(src, memory_bank, enc_states)
+            self.model.decoder.init_state(enc_states)
         else:
             gs = [0] * batch_size
         return gs
@@ -524,7 +524,7 @@ class Translator(object):
         src_lengths = tile(src_lengths, n_best)  # ``(batch * n_best,)``
 
         # (3) Init decoder with n_best src,
-        self.model.decoder.init_state(src, memory_bank, enc_states)
+        self.model.decoder.init_state(enc_states)
         # reshape tgt to ``(len, batch * n_best, nfeat)``
         tgt = batch_tgt_idxs.view(-1, batch_tgt_idxs.size(-1)).T.unsqueeze(-1)
         dec_in = tgt[:-1]  # exclude last target from inputs
@@ -685,7 +685,7 @@ class Translator(object):
                 embeddings.append(self.tabbie_embeddings[batch.indices[b]].to(self._dev))
             kwargs = {'enc_table_embeddings': embeddings}
         src, enc_states, memory_bank, src_lengths = self._run_encoder(batch)
-        self.model.decoder.init_state(src, memory_bank, enc_states, kwargs)
+        self.model.decoder.init_state(enc_states)
         # self.model.decoder.init_state(enc_states)
 
         results = {

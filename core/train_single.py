@@ -6,7 +6,7 @@ import torch
 
 from core.inputters.inputter import build_dataset_iter, \
     load_old_vocab, old_style_vocab, build_dataset_iter_multiple
-from core.model_builder_switch import build_model as build_model_switch
+from core.model_builder_switch import build_model as build_switch_model
 from core.model_builder import build_model
 from core.utils.optimizers import Optimizer
 from core.utils.misc import set_random_seed
@@ -83,13 +83,16 @@ def main(opt, device_id, batch_queue=None, semaphore=None):
 
     # Build model.
     if opt.switch:
-        model = build_model_switch(model_opt, opt, fields, checkpoint)
+        logger.info("Switch model")
+        model = build_switch_model(model_opt, opt, fields, checkpoint)
     else:
         model = build_model(model_opt, opt, fields, checkpoint)
     n_params, enc, dec = _tally_parameters(model)
     logger.info('encoder: %d' % enc)
     logger.info('decoder: %d' % dec)
     logger.info('* number of parameters: %d' % n_params)
+    if opt.switch:
+        logger.info(" use switch strategy")
     _check_save_model_path(opt)
 
     # Build optimizer.

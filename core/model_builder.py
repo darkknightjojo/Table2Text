@@ -76,7 +76,6 @@ def build_encoder(opt, embeddings):
     return str2enc[enc_type].from_opt(opt, embeddings)
 
 
-
 def build_decoder(opt, embeddings, dims=None):
     """
     Various decoder dispatcher function.

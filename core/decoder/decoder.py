@@ -1,3 +1,6 @@
+import os
+import sys
+
 import torch
 import torch.nn as nn
 
@@ -159,6 +162,7 @@ class RNNDecoderBase(DecoderBase):
 
     def init_state(self, src, memory_bank, encoder_final):
         """Initialize decoder state with last state of the encoder."""
+
         def _fix_enc_hidden(hidden):
             # The encoder hidden is  (layers*directions) x batch x dim.
             # We need to convert it to layers x batch x (directions*dim).
@@ -170,7 +174,7 @@ class RNNDecoderBase(DecoderBase):
         if isinstance(encoder_final, tuple):  # LSTM
             self.state["hidden"] = tuple(_fix_enc_hidden(enc_hid)
                                          for enc_hid in encoder_final)
-        elif isinstance(encoder_final, list): # tabbie
+        elif isinstance(encoder_final, list):  # tabbie
             batch_size = len(encoder_final)
             row_embeddings = []
             col_embeddings = []
@@ -178,12 +182,12 @@ class RNNDecoderBase(DecoderBase):
                 row_embeddings.append(item[0])
                 col_embeddings.append(item[1])
             if len(row_embeddings) == 0 or len(col_embeddings) == 0:
-                print(22)
+                sys.exit(-1)
             hidden0 = torch.stack(row_embeddings).reshape((batch_size, 768)).repeat((self.num_layers, 1, 1))
             hidden1 = torch.stack(col_embeddings).reshape((batch_size, 768)).repeat((self.num_layers, 1, 1))
             self.state["hidden"] = tuple([hidden0, hidden1])
         else:  # GRU
-            self.state["hidden"] = (_fix_enc_hidden(encoder_final), )
+            self.state["hidden"] = (_fix_enc_hidden(encoder_final),)
 
         # Init the input feed.
         batch_size = self.state["hidden"][0].size(1)
@@ -445,7 +449,7 @@ class InputFeedRNNDecoder(RNNDecoderBase):
     def _build_rnn(self, rnn_type, input_size,
                    hidden_size, num_layers, dropout):
         assert rnn_type != "SRU", "SRU doesn't support input feed! " \
-            "Please set -input_feed 0!"
+                                  "Please set -input_feed 0!"
         stacked_cell = StackedLSTM if rnn_type == "LSTM" else StackedGRU
         return stacked_cell(num_layers, input_size, hidden_size, dropout)
 
