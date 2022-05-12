@@ -61,8 +61,9 @@ def get_table_embedding(embedding_file_path, data_num, config_file, input_json, 
 
     # scan registers
     import_module_and_submodules("core.pretrain")
+    print("加载模型中....")
     dataset_reader, model = get_model_and_dataset_reader(args, overrides)
-
+    print("模型加载完毕")
     tabbie = TabbieRunner(model, dataset_reader)
 
     if input_json and len(input_json) > 0:

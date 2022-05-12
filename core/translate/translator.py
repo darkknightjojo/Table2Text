@@ -188,7 +188,7 @@ class Translator(object):
             self.table_embeddings = load_table_embeddings_file(tabbie_embeddings, 0)
             self.table_embeddings_count = len(self.table_embeddings)
         else:
-            self.tabbie_embeddings = None
+            self.table_embeddings = None
         self.min_length = min_length
         self.ratio = ratio
         self.stepwise_penalty = stepwise_penalty
@@ -703,7 +703,7 @@ class Translator(object):
 
         # (1) Run the encoder on the src.
         kwargs = dict()
-        if self.tabbie_embeddings is not None:
+        if self.table_embeddings is not None:
             embeddings = []
             try:
                 for b in range(batch.batch_size):
