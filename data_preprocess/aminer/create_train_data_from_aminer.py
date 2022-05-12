@@ -10,7 +10,7 @@ train = []
 json_train = []
 authors = []
 train_path = ''
-prefix = '/aminer_authors_2'
+prefix = '/aminer_authors'
 
 global save_file
 global json_save_file
@@ -62,7 +62,7 @@ def generate_sequence_data(json_s):
                 #     只保留最多四个关联机构
                 value = get_slice_of_array(orgs, 4)
             else:
-                value = str(json_s[key]).replace("|", ",")
+                value = str(json_s[key]).replace("|", " . ")
         else:
             continue
 
@@ -92,7 +92,7 @@ def generate_json_data(json_s):
                 value = get_slice_of_array(orgs, 4)
                 cells.append(value)
             else:
-                cells.append(json_s[key])
+                cells.append(str(json_s[key]).replace("|", " . "))
     json_data['id'] = json_s['id']
     json_data['table_data'] = [headers, cells]
 
@@ -123,7 +123,7 @@ if __name__ == '__main__':
     path = current_path
 
     save_file = open(path + "/train" + prefix + "_train.txt", 'a+', encoding='utf-8')
-    json_save_file = open(path + "/train/json" + prefix + "_train_json.txt", 'a+', encoding='utf-8')
+    json_save_file = open(path + "/train/json" + prefix + "_train_json.jsonl", 'a+', encoding='utf-8')
     author_save_file = open(path + "/train/authorId" + prefix + "_authorId.txt", 'a+', encoding='utf-8')
 
     for index, file in enumerate(os.listdir(current_path)):

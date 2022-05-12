@@ -178,7 +178,15 @@ class Translator(object):
             self.rnn_weights = None
 
         if tabbie_embeddings is not None:
-            self.tabbie_embeddings = torch.load(tabbie_embeddings)
+            # 每个文件中存储的tensor的数量
+            self.table_embeddings_count = 0
+            # 当前加载的文件的编号
+            self.table_embeddings_rank = 0
+            # 文件保存路径
+            self.table_embeddings_path = tabbie_embeddings
+            # 加载进内存的张量
+            self.table_embeddings = load_table_embeddings_file(tabbie_embeddings, 0)
+            self.table_embeddings_count = len(self.table_embeddings)
         else:
             self.tabbie_embeddings = None
         self.min_length = min_length
@@ -699,9 +707,23 @@ class Translator(object):
             embeddings = []
             try:
                 for b in range(batch.batch_size):
-                    embeddings.append(self.tabbie_embeddings[batch.indices[b]])
+                    # 计算文件编号
+                    quotient = (batch.indices[b] // self.table_embeddings_count).item()
+                    remainder = (batch.indices[b] % self.table_embeddings_count).item()
+                    # 如果该文件已经加载，直接读取
+                    if quotient == self.table_embeddings_rank:
+                        embeddings.append(self.table_embeddings[remainder])
+                    else:
+                        # 释放显存
+                        self.table_embeddings = None
+                        torch.cuda.empty_cache()
+                        self.table_embeddings = load_table_embeddings_file(self.table_embeddings_path,
+                                                                                quotient)
+                        self.table_embeddings_rank = quotient
+                        embeddings.append(self.table_embeddings[remainder])
             except IndexError:
                 print("a error when load embeddings")
+
             kwargs = {'embeddings': embeddings}
         src, enc_states, memory_bank, src_lengths = self._run_encoder(batch)
 
@@ -803,3 +825,8 @@ class Translator(object):
                 name, avg_score,
                 name, ppl))
         return msg
+
+
+def load_table_embeddings_file(path, rank):
+    path = path + str(rank) + ".pt"
+    return torch.load(path)
