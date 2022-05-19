@@ -147,7 +147,7 @@ class MultiBranchWithLMDecoder(RNNDecoderBase):
                 # batch_size * 768
                 table_embeddings = kwargs.pop('embeddings', None)
                 new_table_embeddings = []
-                if table_embeddings is not None:
+                if table_embeddings is not None and len(table_embeddings) > 0:
                     if isinstance(table_embeddings, dict):
                         table_embeddings = table_embeddings.get('embeddings', None)
                     # 使用线性层将table_embeddings 映射到 768
@@ -155,7 +155,7 @@ class MultiBranchWithLMDecoder(RNNDecoderBase):
                         for table_embedding in table_embeddings:
                             e = self.map_embedding(table_embedding)
                             new_table_embeddings.append(e)
-                encoder_final = new_table_embeddings
+                    encoder_final = new_table_embeddings
 
         # encoder_final的形状应当为layers * batch_size * hidden_num
         super().init_state(src, memory_bank, encoder_final)
