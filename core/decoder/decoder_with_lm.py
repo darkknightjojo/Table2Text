@@ -142,7 +142,7 @@ class MultiBranchWithLMDecoder(RNNDecoderBase):
         We will be able to _unlink_states later when needed inside the _run_forward_pass
         """
         if kwargs is not None:
-            if kwargs['embeddings'] is not None:
+            if 'embeddings' in kwargs:
                 # 使用tabbie的输出作为rnn初始化的张量
                 # batch_size * 768
                 table_embeddings = kwargs.pop('embeddings', None)

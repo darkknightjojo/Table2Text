@@ -177,7 +177,7 @@ class Translator(object):
         else:
             self.rnn_weights = None
 
-        if tabbie_embeddings is not None:
+        if tabbie_embeddings:
             # 每个文件中存储的tensor的数量
             self.table_embeddings_count = 0
             # 当前加载的文件的编号
@@ -357,6 +357,10 @@ class Translator(object):
             raise ValueError("batch_size must be set")
 
         src_data = {"reader": self.src_reader, "data": src, "dir": src_dir}
+        tgt_data = {"reader": self.tgt_reader, "data": tgt, "dir": None}
+        _readers, _data, _dir = inputters.Dataset.config(
+            [('src', src_data), ('tgt', tgt_data)])
+
         tgt_data = {"reader": self.tgt_reader, "data": tgt, "dir": None}
         _readers, _data, _dir = inputters.Dataset.config(
             [('src', src_data), ('tgt', tgt_data)])
