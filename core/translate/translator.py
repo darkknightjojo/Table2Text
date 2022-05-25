@@ -23,6 +23,7 @@ from core.decoder.structure_aware import StructureAwareDecoder
 from core.model_builder_switch import load_test_model as load_switch_test_model
 from core.model_builder import load_test_model
 
+
 def build_translator(opt, report_score=True, logger=None, out_file=None):
     if out_file is None:
         out_file = codecs.open(opt.output, 'w+', 'utf-8')
@@ -722,7 +723,7 @@ class Translator(object):
                         self.table_embeddings = None
                         torch.cuda.empty_cache()
                         self.table_embeddings = load_table_embeddings_file(self.table_embeddings_path,
-                                                                                quotient)
+                                                                           quotient)
                         self.table_embeddings_rank = quotient
                         embeddings.append(self.table_embeddings[remainder])
             except IndexError:

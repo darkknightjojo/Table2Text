@@ -10,7 +10,8 @@ train = []
 json_train = []
 authors = []
 train_path = ''
-prefix = '/aminer_authors'
+# prefix = '/aminer_authors'
+prefix = '/raw'
 
 global save_file
 global json_save_file
@@ -20,7 +21,7 @@ global author_save_file
 def read_data(path, file):
     with open(path + "/" + file, 'r', encoding='utf-8') as f:
         line = f.readline()
-        while line:
+        while line and line != "\n":
             json_s = json.loads(line)
             # 过滤'h_index' < 20的学者
             if 'h_index' in json_s and int(json_s['h_index']) < h_index_threshold:
@@ -62,14 +63,14 @@ def generate_sequence_data(json_s):
                 #     只保留最多四个关联机构
                 value = get_slice_of_array(orgs, 4)
             else:
-                value = str(json_s[key]).replace("|", " . ")
+                value = str(json_s[key]).replace("|", " . ").replace("￨", " . ")
         else:
             continue
 
         values = value.split()
         current_field = ''
         for i, v in enumerate(values):
-            current_field += v + '|' + key + '|' + str(i + 1) + '|' + str(len(values) - i) + ' '
+            current_field += v + u'￨' + key + u'￨' + str(i + 1) + u'￨' + str(len(values) - i) + ' '
         train_data += current_field
     return train_data
 
@@ -92,7 +93,7 @@ def generate_json_data(json_s):
                 value = get_slice_of_array(orgs, 4)
                 cells.append(value)
             else:
-                cells.append(str(json_s[key]).replace("|", " . "))
+                cells.append(str(json_s[key]).replace("|", " . ")).replace("￨", " . ")
     json_data['id'] = json_s['id']
     json_data['table_data'] = [headers, cells]
 

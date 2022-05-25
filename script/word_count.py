@@ -1,5 +1,5 @@
 def gettext():
-    txt = open("data/wikibio/raw/train/train.sent","r",errors='ignore').read()
+    txt = open("../data/wikibio/raw/train/train.sent", "r", errors='ignore').read()
     # table = open("/data/wikibio/raw/train/train.sent","r",errors='ignore').read()
     # for ch in '!"#$&()*+,-./:;<=>?@[\\]^_{|}·~‘’':
     #     txt = txt.replace(ch, "")
